@@ -9,32 +9,76 @@ Library.__index = Library
 
 ----------------------------------------------------------------------
 -- themes
+-- Every theme is a two-colour gradient design:
+--   bg -> bg2          window body (top to bottom)
+--   header -> header2  sidebar (top to bottom)
+--   accent -> accent2  the signature gradient (top line, toggles, sliders, buttons, headers)
+--   panel / field      groupbox body / inputs, buttons and dropdown boxes
 ----------------------------------------------------------------------
 
 local function C3(t)
 	return Color3.fromRGB(t[1], t[2], t[3])
 end
 
--- bg = window body / top bar, header = sidebar, panel = groupbox background,
--- field = inputs / dropdown boxes / buttons, toggleOn = (optional) colour of an enabled toggle
-local function preset(bg, header, accent, accentDim, border, text, textDim, toggleOff, panel, field, toggleOn)
-	return {
-		bg = C3(bg), header = C3(header), accent = C3(accent), accentDim = C3(accentDim),
-		border = C3(border), text = C3(text), textDim = C3(textDim),
-		toggle_on = C3(toggleOn or accent), toggle_off = C3(toggleOff), panel = C3(panel), field = C3(field),
-	}
+local function preset(p)
+	local t = {}
+	for k, v in pairs(p) do t[k] = C3(v) end
+	t.accentDim = t.accentDim or t.accent:Lerp(t.bg, 0.6)
+	t.toggle_on = t.toggle_on or t.accent
+	return t
 end
 
 Library.ThemePresets = {
-	Dark       = preset({18, 18, 20},  {13, 13, 15},  {64, 140, 255},  {36, 78, 148},  {46, 46, 53},   {228, 228, 232}, {128, 128, 138}, {44, 44, 50},   {23, 23, 26},  {32, 32, 36}),
-	Midnight   = preset({10, 12, 24},  {7, 9, 18},    {118, 108, 255}, {62, 56, 150},  {38, 42, 70},   {226, 229, 246}, {120, 126, 160}, {32, 36, 62},   {14, 17, 32},  {22, 26, 46}),
-	Crimson    = preset({16, 11, 12},  {11, 7, 8},    {232, 64, 84},   {128, 34, 48},  {58, 38, 42},   {238, 225, 227}, {146, 118, 122}, {48, 32, 35},   {21, 14, 16},  {32, 22, 25}),
-	Emerald    = preset({10, 16, 14},  {7, 11, 10},   {46, 204, 134},  {24, 110, 72},  {36, 62, 52},   {222, 238, 230}, {114, 146, 130}, {30, 48, 40},   {13, 21, 18},  {21, 33, 28}),
-	Sunset     = preset({18, 13, 11},  {12, 8, 7},    {255, 146, 60},  {146, 78, 28},  {64, 46, 38},   {240, 228, 218}, {152, 130, 114}, {50, 37, 30},   {24, 17, 14},  {36, 27, 22}),
-	Rose       = preset({18, 12, 16},  {12, 7, 11},   {240, 98, 168},  {132, 50, 96},  {62, 40, 56},   {240, 224, 234}, {150, 120, 140}, {50, 34, 45},   {24, 16, 21},  {36, 25, 32}),
-	Monochrome = preset({12, 12, 12},  {8, 8, 8},     {190, 190, 190}, {100, 100, 100}, {48, 48, 48},   {238, 238, 238}, {128, 128, 128}, {38, 38, 38},   {17, 17, 17},  {27, 27, 27}, {255, 255, 255}),
+	Aurora = preset({
+		bg = {14, 16, 30}, bg2 = {9, 10, 20}, header = {21, 23, 46}, header2 = {11, 12, 26},
+		accent = {56, 189, 248}, accent2 = {168, 85, 247}, border = {40, 44, 76},
+		text = {232, 236, 250}, textDim = {126, 134, 170}, toggle_off = {40, 44, 72},
+		panel = {18, 20, 38}, field = {27, 30, 54},
+	}),
+	Nebula = preset({
+		bg = {20, 12, 32}, bg2 = {12, 7, 22}, header = {32, 17, 52}, header2 = {16, 9, 30},
+		accent = {192, 104, 255}, accent2 = {255, 92, 170}, border = {60, 38, 84},
+		text = {244, 232, 252}, textDim = {152, 128, 174}, toggle_off = {52, 34, 74},
+		panel = {26, 15, 40}, field = {38, 23, 58},
+	}),
+	Sunset = preset({
+		bg = {28, 15, 14}, bg2 = {16, 9, 12}, header = {44, 21, 19}, header2 = {22, 11, 15},
+		accent = {255, 159, 67}, accent2 = {255, 82, 112}, border = {80, 46, 44},
+		text = {252, 238, 228}, textDim = {172, 138, 128}, toggle_off = {68, 40, 38},
+		panel = {34, 18, 17}, field = {50, 28, 26},
+	}),
+	Ocean = preset({
+		bg = {10, 20, 30}, bg2 = {6, 12, 20}, header = {13, 32, 48}, header2 = {7, 16, 28},
+		accent = {52, 152, 255}, accent2 = {28, 214, 196}, border = {30, 58, 84},
+		text = {226, 240, 250}, textDim = {118, 146, 170}, toggle_off = {30, 52, 74},
+		panel = {12, 25, 38}, field = {19, 38, 57},
+	}),
+	Emerald = preset({
+		bg = {10, 24, 20}, bg2 = {6, 14, 12}, header = {13, 38, 29}, header2 = {7, 19, 16},
+		accent = {38, 214, 140}, accent2 = {190, 242, 70}, border = {30, 70, 56},
+		text = {226, 248, 238}, textDim = {118, 160, 140}, toggle_off = {28, 58, 46},
+		panel = {12, 30, 24}, field = {19, 44, 36},
+	}),
+	Crimson = preset({
+		bg = {26, 11, 14}, bg2 = {14, 6, 9}, header = {42, 15, 20}, header2 = {20, 7, 11},
+		accent = {255, 72, 88}, accent2 = {255, 140, 50}, border = {76, 34, 40},
+		text = {252, 230, 232}, textDim = {170, 126, 132}, toggle_off = {62, 30, 36},
+		panel = {32, 13, 17}, field = {48, 21, 26},
+	}),
+	Candy = preset({
+		bg = {24, 16, 32}, bg2 = {14, 10, 22}, header = {38, 23, 52}, header2 = {19, 12, 30},
+		accent = {255, 120, 190}, accent2 = {110, 170, 255}, border = {70, 48, 96},
+		text = {250, 236, 252}, textDim = {160, 138, 182}, toggle_off = {58, 40, 80},
+		panel = {30, 19, 42}, field = {44, 29, 62},
+	}),
+	Monochrome = preset({
+		bg = {16, 16, 18}, bg2 = {9, 9, 10}, header = {25, 25, 28}, header2 = {12, 12, 14},
+		accent = {240, 240, 244}, accent2 = {130, 130, 142}, border = {48, 48, 54},
+		text = {240, 240, 244}, textDim = {130, 130, 138}, toggle_off = {44, 44, 50},
+		panel = {20, 20, 23}, field = {30, 30, 34},
+	}),
 }
-Library.ThemePresetOrder = { "Dark", "Midnight", "Crimson", "Emerald", "Sunset", "Rose", "Monochrome" }
+Library.ThemePresetOrder = { "Aurora", "Nebula", "Sunset", "Ocean", "Emerald", "Crimson", "Candy", "Monochrome" }
 
 local function copyTable(t)
 	local n = {}
@@ -42,26 +86,36 @@ local function copyTable(t)
 	return n
 end
 
-Library.Theme = copyTable(Library.ThemePresets.Dark)
+Library.Theme = copyTable(Library.ThemePresets.Aurora)
 
 ----------------------------------------------------------------------
 -- constants / classes
 ----------------------------------------------------------------------
 
 local HEADER_H = 44    -- top bar height (also the height of the sidebar's logo area)
-local SIDEBAR_W = 132  -- left navigation sidebar width
-local TAB_H = 26       -- one entry in the sidebar
-local TAB_STEP = 30    -- vertical step between sidebar entries
+local SIDEBAR_W = 140  -- left navigation sidebar width
+local TAB_H = 28       -- one entry in the sidebar
+local TAB_STEP = 32    -- vertical step between sidebar entries
 local FONT = 2
 local BOX_H = 22
-local BTN_H = 24
+local BTN_H = 26
 local MARGIN = 10    -- content edge -> groupbox
 local GAP = 10       -- between groupboxes
 local PAD = 10       -- groupbox edge -> element content
-local GB_HEAD = 28   -- titled groupbox header height
+local GB_HEAD = 30   -- titled groupbox header height
 local V0 = Vector2.new(0, 0)
 local LOCK_ALPHA = 0.4 -- opacity of a locked element
-local KB_W = 54        -- key box width of the keybind toggle
+local KB_W = 54        -- key chip width of the keybind toggle
+
+-- gradient band counts (more bands = smoother, but more Drawing objects)
+local N_BG, N_SB, N_TOP = 20, 14, 28
+local N_HDR = 10      -- groupbox header band
+local N_BTN = 6       -- button body
+local N_FILL = 8      -- slider fill
+local N_DIV = 12      -- divider
+local N_TAB = 8       -- active tab highlight
+
+local WHITE = Color3.fromRGB(255, 255, 255)
 
 local Window, Tab, Groupbox, Element = {}, {}, {}, {}
 Window.__index = Window
@@ -192,6 +246,13 @@ local function keyToChar(kc)
 		return shift and p[2] or p[1]
 	end
 	return nil
+end
+
+-- places n adjacent bands across [0, total) in whole pixels: returns x0, width for band i
+local function band(i, n, total)
+	local a = math.floor((i - 1) * total / n)
+	local b = math.floor(i * total / n)
+	return a, math.max(0, b - a)
 end
 
 ----------------------------------------------------------------------
@@ -663,6 +724,7 @@ end
 
 ----------------------------------------------------------------------
 -- Notifications (top-right toasts, newest on top, older ones slide down)
+-- gradient wash from the type colour, solid icon dot, gradient top line
 ----------------------------------------------------------------------
 
 local NOTIF_W = 292
@@ -674,9 +736,9 @@ local NOTIF_MAX = 6
 -- plain ASCII glyphs only: the drawing font has no unicode symbols
 local NOTIF_TYPES = {
 	info    = { glyph = "i" },
-	success = { glyph = "+", color = Color3.fromRGB(70, 200, 120) },
-	warning = { glyph = "!", color = Color3.fromRGB(255, 176, 56) },
-	error   = { glyph = "x", color = Color3.fromRGB(235, 70, 84) },
+	success = { glyph = "+", color = Color3.fromRGB(70, 214, 130) },
+	warning = { glyph = "!", color = Color3.fromRGB(255, 184, 64) },
+	error   = { glyph = "x", color = Color3.fromRGB(244, 76, 92) },
 }
 
 local Notifs = { list = {}, last = 0 }
@@ -795,7 +857,7 @@ local function notifTick()
 		if n.fill then
 			local frac = math.max(0, 1 - n.elapsed / n.dur)
 			local fw = math.floor((w - 2) * frac + 0.5)
-			n.fill.Size = Vector2.new(fw, 2)
+			n.fill.Size = Vector2.new(fw, 3)
 			n.fill.Visible = vis and fw > 0
 		end
 
@@ -818,8 +880,8 @@ function Library:Notify(o)
 	local kind = NOTIF_TYPES[string.lower(tostring(o.Type or "info"))] or NOTIF_TYPES.info
 	local color = kind.color or T.accent
 
-	local titleW = NOTIF_W - 44 - 28
-	local msgW = NOTIF_W - 44 - 14
+	local titleW = NOTIF_W - 46 - 28
+	local msgW = NOTIF_W - 46 - 14
 	local title = fitText(tostring(o.Title or "Notification"), 13, titleW)
 	local msg = o.Text or o.Content or o.Message
 	local lines = {}
@@ -839,8 +901,8 @@ function Library:Notify(o)
 	if type(dur) ~= "number" or dur <= 0 or dur == math.huge then dur = nil end
 
 	local w = NOTIF_W
-	local h = 14 + 16 + (#lines > 0 and (2 + #lines * 14) or 0) + 14
-	if h < 50 then h = 50 end
+	local h = 16 + 16 + (#lines > 0 and (2 + #lines * 14) or 0) + 16
+	if h < 54 then h = 54 end
 
 	local n = { objs = {}, h = h, state = "in", t = 0, elapsed = 0, dur = dur, T = T, color = color }
 	local Z = 300
@@ -858,25 +920,32 @@ function Library:Notify(o)
 	-- soft drop shadow
 	add("Square", { Filled = true, Color = black, Size = Vector2.new(w + 8, h + 9), ZIndex = Z }, -4, -2, 0.08)
 	add("Square", { Filled = true, Color = black, Size = Vector2.new(w + 4, h + 5), ZIndex = Z }, -2, -1, 0.14)
-	-- card
-	add("Square", { Filled = true, Color = T.header, Size = Vector2.new(w, h), ZIndex = Z + 1 }, 0, 0, 1)
-	n.border = add("Square", { Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(w, h), ZIndex = Z + 5 }, 0, 0, 1)
-	-- accent stripe across the top, inside the border
-	add("Square", { Filled = true, Color = color, Size = Vector2.new(w - 2, 2), ZIndex = Z + 2 }, 1, 1, 1)
-	-- square icon badge
-	add("Square", { Filled = true, Color = color, Size = Vector2.new(22, 22), ZIndex = Z + 2 }, 11, 13, 0.2)
-	add("Square", { Filled = false, Color = color, Thickness = 1, Size = Vector2.new(22, 22), ZIndex = Z + 3 }, 11, 13, 0.9)
-	add("Text", { Text = kind.glyph, Color = color, Size = 13, Font = FONT, Center = true, ZIndex = Z + 4 }, 22, 17, 1)
-	-- text
-	add("Text", { Text = title, Color = T.text, Size = 13, Font = FONT, ZIndex = Z + 4 }, 44, 13, 1)
-	for i, line in ipairs(lines) do
-		add("Text", { Text = line, Color = T.textDim, Size = 12, Font = FONT, ZIndex = Z + 4 }, 44, 31 + (i - 1) * 14, 1)
+	-- card body, then a horizontal gradient wash that fades from the type colour
+	add("Square", { Filled = true, Color = T.bg, Size = Vector2.new(w, h), ZIndex = Z + 1 }, 0, 0, 1)
+	local tint = T.bg:Lerp(color, 0.22)
+	for i = 1, 10 do
+		local x0, bw = band(i, 10, w - 2)
+		add("Square", { Filled = true, Color = tint:Lerp(T.bg, (i - 1) / 9), Size = Vector2.new(bw, h - 2), ZIndex = Z + 2 }, 1 + x0, 1, 1)
 	end
-	n.closeTxt = add("Text", { Text = "x", Color = T.textDim, Size = 13, Font = FONT, ZIndex = Z + 4 }, w - 18, 12, 1)
+	n.border = add("Square", { Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(w, h), ZIndex = Z + 6 }, 0, 0, 1)
+	-- gradient line across the top
+	for i = 1, 12 do
+		local x0, bw = band(i, 12, w - 2)
+		add("Square", { Filled = true, Color = color:Lerp(T.accent2, ((i - 1) / 11) * 0.7), Size = Vector2.new(bw, 2), ZIndex = Z + 4 }, 1 + x0, 1, 1)
+	end
+	-- solid icon dot with a dark glyph
+	add("Circle", { Filled = true, Color = color, Radius = 11, NumSides = 28, Thickness = 1, ZIndex = Z + 4 }, 25, 27, 1)
+	add("Text", { Text = kind.glyph, Color = T.bg, Size = 14, Font = FONT, Center = true, ZIndex = Z + 5 }, 25, 20, 1)
+	-- text
+	add("Text", { Text = title, Color = T.text, Size = 13, Font = FONT, ZIndex = Z + 5 }, 46, 14, 1)
+	for i, line in ipairs(lines) do
+		add("Text", { Text = line, Color = T.textDim, Size = 12, Font = FONT, ZIndex = Z + 5 }, 46, 32 + (i - 1) * 14, 1)
+	end
+	n.closeTxt = add("Text", { Text = "x", Color = T.textDim, Size = 13, Font = FONT, ZIndex = Z + 5 }, w - 18, 12, 1)
 	-- time remaining bar along the bottom edge
 	if dur then
-		add("Square", { Filled = true, Color = T.field, Size = Vector2.new(w - 2, 2), ZIndex = Z + 2 }, 1, h - 3, 1, true)
-		n.fill = add("Square", { Filled = true, Color = color, Size = Vector2.new(w - 2, 2), ZIndex = Z + 3 }, 1, h - 3, 1, true)
+		add("Square", { Filled = true, Color = T.field, Size = Vector2.new(w - 2, 3), ZIndex = Z + 3 }, 1, h - 4, 1, true)
+		n.fill = add("Square", { Filled = true, Color = color, Size = Vector2.new(w - 2, 3), ZIndex = Z + 4 }, 1, h - 4, 1, true)
 	end
 
 	table.insert(Notifs.list, n)
@@ -922,14 +991,14 @@ end
 
 ----------------------------------------------------------------------
 -- Window
--- Layout: accent edge on the far left, navigation sidebar (logo, tabs, menu key),
--- slim top bar (breadcrumb + window buttons), scrolling content area.
+-- Layout: gradient window body, gradient sidebar (logo / title / tabs / menu key),
+-- gradient accent line along the very top, top bar with the tab name and round buttons.
 ----------------------------------------------------------------------
 
 -- opts: Title, Subtitle, Icon (letter), Image ("rbxassetid://123", url or file path), Size, Position, Theme, ToggleKey
 function Library:CreateWindow(opts)
 	opts = opts or {}
-	local size = opts.Size or Vector2.new(600, 440)
+	local size = opts.Size or Vector2.new(620, 450)
 	local pos = opts.Position or Vector2.new(200, 150)
 
 	local self = setmetatable({}, Window)
@@ -938,7 +1007,7 @@ function Library:CreateWindow(opts)
 	if opts.Theme and opts.Theme.accent and not opts.Theme.toggle_on then
 		self.Theme.toggle_on = opts.Theme.accent
 	end
-	self.themeName = (opts.Theme == nil) and "Dark" or nil
+	self.themeName = (opts.Theme == nil) and "Aurora" or nil
 
 	self.x, self.y = round(pos.X), round(pos.Y)
 	self.w, self.h = size.X, size.Y
@@ -964,6 +1033,7 @@ function Library:CreateWindow(opts)
 	self._tk = {}     -- open/close key press state
 	self._held = {}   -- keys held when a bind capture started
 
+	local T = self.Theme
 	local function C(class, props)
 		return self:_D(class, props, self.chrome)
 	end
@@ -971,47 +1041,50 @@ function Library:CreateWindow(opts)
 		return self:_D(class, props, self.side)
 	end
 
-	-- window frame
-	self.bg = C("Square", { Visible = true, Filled = true, Color = "bg", Size = Vector2.new(self.w, self.h), Position = V0, ZIndex = 1 })
+	-- gradient bands: window body, sidebar, accent line (colours set in _PaintChrome)
+	self.bgStrips, self.sbStrips, self.topStrips = {}, {}, {}
+	for i = 1, N_BG do
+		self.bgStrips[i] = C("Square", { Visible = true, Filled = true, Color = T.bg, Size = V0, Position = V0, ZIndex = 1 })
+	end
+	for i = 1, N_SB do
+		self.sbStrips[i] = C("Square", { Visible = true, Filled = true, Color = T.header, Size = V0, Position = V0, ZIndex = 2 })
+	end
+	for i = 1, N_TOP do
+		self.topStrips[i] = C("Square", { Visible = true, Filled = true, Color = T.accent, Size = V0, Position = V0, ZIndex = 5 })
+	end
+	self.sbLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
+	self.sbHeadLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
+	self.tbLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
 
-	-- sidebar
-	self.sbBg = C("Square", { Visible = true, Filled = true, Color = "header", Size = Vector2.new(SIDEBAR_W - 3, self.h - 2), Position = V0, ZIndex = 2 })
-	self.sbLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(1, self.h - 2), Position = V0, ZIndex = 3 })
-	self.sbHeadLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(SIDEBAR_W - 3, 1), Position = V0, ZIndex = 3 })
-	-- top bar underline
-	self.tbLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(self.w - SIDEBAR_W - 2, 1), Position = V0, ZIndex = 3 })
-	-- accent edge down the whole left side of the window
-	self.accent = C("Square", { Visible = true, Filled = true, Color = "accent", Size = Vector2.new(2, self.h - 2), Position = V0, ZIndex = 5 })
+	-- logo badge: round monogram with a second-colour ring (replaced by the image when one is loaded)
+	self.logoRing = C("Circle", { Visible = true, Filled = false, Color = T.accent2, Radius = 15, NumSides = 36, Thickness = 2, Position = V0, ZIndex = 4 })
+	self.logo = C("Circle", { Visible = true, Filled = true, Color = T.accent, Radius = 12, NumSides = 32, Thickness = 1, Position = V0, ZIndex = 4 })
+	self.logoTxt = C("Text", { Visible = true, Text = "", Color = T.bg, Size = 14, Font = FONT, Center = true, Position = V0, ZIndex = 5 })
+	self.titleTxt = C("Text", { Visible = true, Text = self.title, Color = T.text, Size = 13, Font = FONT, Position = V0, ZIndex = 4 })
+	self.subTxt = C("Text", { Visible = false, Text = "", Color = T.textDim, Size = 11, Font = FONT, Position = V0, ZIndex = 4 })
 
-	-- logo badge (round monogram, replaced by the image when one is loaded) + title / subtitle
-	self.logo = C("Circle", { Visible = true, Filled = true, Color = "accent", Radius = 11, NumSides = 32, Thickness = 1, Position = V0, ZIndex = 4 })
-	self.logoTxt = C("Text", { Visible = true, Text = "", Color = "bg", Size = 14, Font = FONT, Center = true, Position = V0, ZIndex = 5 })
-	self.titleTxt = C("Text", { Visible = true, Text = self.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 4 })
-	self.subTxt = C("Text", { Visible = false, Text = "", Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 4 })
+	-- top bar heading (name of the active tab)
+	self.crumbTxt = C("Text", { Visible = true, Text = "", Color = T.text, Size = 14, Font = FONT, Position = V0, ZIndex = 4 })
 
-	-- top bar breadcrumb (name of the active tab)
-	self.crumbDot = C("Square", { Visible = true, Filled = true, Color = "accent", Size = Vector2.new(6, 6), Position = V0, ZIndex = 4 })
-	self.crumbTxt = C("Text", { Visible = true, Text = "", Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 4 })
-
-	-- header buttons: flat, only show a background on hover (ASCII glyphs only)
+	-- header buttons: round dots, close / minimize (ASCII glyphs only)
 	local function mkBtn(name, glyph)
 		local b = {}
-		b.box = C("Square", { Visible = true, Filled = true, Color = "bg", Size = Vector2.new(22, 22), Position = V0, ZIndex = 4 })
-		b.txt = C("Text", { Visible = true, Text = glyph, Color = "textDim", Size = 14, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
+		b.box = C("Circle", { Visible = true, Filled = true, Color = T.field, Radius = 9, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 4 })
+		b.txt = C("Text", { Visible = true, Text = glyph, Color = T.textDim, Size = 13, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
 		self.btn[name] = b
 		return b
 	end
 	self.closeTxt = mkBtn("close", "x").txt
 	self.minTxt = mkBtn("min", self.minimized and "+" or "-").txt
 
-	-- menu key box lives at the bottom of the sidebar
-	self.keyLbl = S("Text", { Visible = true, Text = "MENU KEY", Color = "textDim", Size = 10, Font = FONT, Position = V0, ZIndex = 4 })
-	self.keyBox = S("Square", { Visible = true, Filled = true, Color = "field", Size = Vector2.new(SIDEBAR_W - 24, 20), Position = V0, ZIndex = 4 })
-	self.keyBdr = S("Square", { Visible = true, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(SIDEBAR_W - 24, 20), Position = V0, ZIndex = 5 })
-	self.keyTxt = S("Text", { Visible = true, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
+	-- menu key chip lives at the bottom of the sidebar
+	self.keyLbl = S("Text", { Visible = true, Text = "MENU KEY", Color = T.textDim, Size = 10, Font = FONT, Position = V0, ZIndex = 4 })
+	self.keyBox = S("Square", { Visible = true, Filled = true, Color = T.field, Size = Vector2.new(SIDEBAR_W - 24, 22), Position = V0, ZIndex = 4 })
+	self.keyBdr = S("Square", { Visible = true, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(SIDEBAR_W - 24, 22), Position = V0, ZIndex = 5 })
+	self.keyTxt = S("Text", { Visible = true, Text = "", Color = T.textDim, Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
 
 	-- outline is drawn last / on top so nothing can cover its edges
-	self.bgBorder = C("Square", { Visible = true, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(self.w, self.h), Position = V0, ZIndex = 50 })
+	self.bgBorder = C("Square", { Visible = true, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(self.w, self.h), Position = V0, ZIndex = 50 })
 
 	self.scrollbar = self:_D("Square", { Visible = false, Filled = true, Color = "accentDim", Size = Vector2.new(2, 10), Position = V0, ZIndex = 4 })
 
@@ -1043,6 +1116,8 @@ function Library:CreateWindow(opts)
 		end,
 	}
 
+	self:_PaintChrome()
+	self:_PaintButtons()
 	self:_RefitTitle()
 	self:_RenderMenuKey()
 
@@ -1092,6 +1167,31 @@ function Window:_D(class, props, store)
 		table.insert(self.themed, { o, role })
 	end
 	return o
+end
+
+-- repaints every gradient / colour of the window chrome from the current theme
+function Window:_PaintChrome()
+	local T = self.Theme
+	for i, s in ipairs(self.bgStrips) do
+		s.Color = T.bg:Lerp(T.bg2, (i - 1) / (N_BG - 1))
+	end
+	for i, s in ipairs(self.sbStrips) do
+		s.Color = T.header:Lerp(T.header2, (i - 1) / (N_SB - 1))
+	end
+	for i, s in ipairs(self.topStrips) do
+		s.Color = T.accent:Lerp(T.accent2, (i - 1) / (N_TOP - 1))
+	end
+	self.sbLine.Color = T.border
+	self.sbHeadLine.Color = T.border
+	self.tbLine.Color = T.border
+	self.bgBorder.Color = T.border
+	self.logoRing.Color = T.accent2
+	self.logo.Color = T.accent
+	self.logoTxt.Color = T.bg
+	self.titleTxt.Color = T.text
+	self.subTxt.Color = T.textDim
+	self.crumbTxt.Color = T.text
+	self.keyLbl.Color = T.textDim
 end
 
 ----------------------------------------------------------------------
@@ -1293,10 +1393,10 @@ function Window:SetImage(src)
 			local ok, d = pcall(function() return Drawing.new("Image") end)
 			if not ok or not d then return end
 			d.Visible = false
-			d.Size = Vector2.new(22, 22)
+			d.Size = Vector2.new(24, 24)
 			d.Transparency = 1
 			d.ZIndex = 6
-			pcall(function() d.Rounding = 11 end)
+			pcall(function() d.Rounding = 12 end)
 			table.insert(self.all, d)
 			self.logoImg = d
 		end
@@ -1314,7 +1414,7 @@ function Window:_UpdateLogo()
 	self.logoTxt.Visible = self.visible and not useImg
 	if self.logoImg then
 		self.logoImg.Visible = self.visible and useImg
-		self.logoImg.Position = Vector2.new(self.x + 12, self.y + 11)
+		self.logoImg.Position = Vector2.new(self.x + 13, self.y + 11)
 	end
 end
 
@@ -1325,11 +1425,11 @@ function Window:_PaintButton(name)
 	if not b then return end
 	local on = self.hover[name]
 	if name == "close" then
-		b.box.Color = on and Color3.fromRGB(196, 54, 66) or T.bg
-		b.txt.Color = on and Color3.fromRGB(255, 255, 255) or T.textDim
+		b.box.Color = on and Color3.fromRGB(240, 74, 94) or T.field
+		b.txt.Color = on and WHITE or T.textDim
 	else
-		b.box.Color = on and T.field or T.bg
-		b.txt.Color = on and T.accent or T.textDim
+		b.box.Color = on and T.accent or T.field
+		b.txt.Color = on and T.bg or T.textDim
 	end
 end
 
@@ -1340,7 +1440,7 @@ function Window:_PaintButtons()
 end
 
 function Window:_RefitTitle()
-	local avail = SIDEBAR_W - 42 - 6
+	local avail = SIDEBAR_W - 46 - 6
 	self.titleTxt.Text = fitText(self.title, 13, avail)
 	self.subTxt.Text = fitText(self.subtitle or "", 11, avail)
 	local ic = tostring(self.icon or "")
@@ -1350,12 +1450,12 @@ function Window:_RefitTitle()
 	self.logoTxt.Text = ic:sub(1, 1):upper()
 end
 
--- returns true when there is a breadcrumb to show
+-- returns true when there is a heading to show
 function Window:_UpdateCrumb()
 	local t = self.activeTab
 	local s = (t and not t.implicit) and t.name or ""
-	local avail = self.w - SIDEBAR_W - 26 - 70
-	self.crumbTxt.Text = fitText(s, 13, avail)
+	local avail = self.w - SIDEBAR_W - 18 - 70
+	self.crumbTxt.Text = fitText(s, 14, avail)
 	return s ~= ""
 end
 
@@ -1405,15 +1505,23 @@ end
 
 function Window:_RefitTabs()
 	for _, tab in ipairs(self.tabs) do
-		tab.txt.Text = self:_Fit(tab.name, 12, SIDEBAR_W - 38)
+		tab.txt.Text = self:_Fit(tab.name, 12, SIDEBAR_W - 46)
 	end
 end
 
 function Window:AddTab(name)
 	local tab = setmetatable({ window = self, name = tostring(name), groupboxes = {}, scroll = 0 }, Tab)
-	tab.bgSq = self:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(SIDEBAR_W - 16, TAB_H), Position = V0, ZIndex = 4 })
-	tab.bar = self:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(3, TAB_H), Position = V0, ZIndex = 6 })
-	tab.txt = self:_D("Text", { Visible = false, Text = tab.name, Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 7 })
+	local T = self.Theme
+	-- active highlight: horizontal gradient that fades out to the right
+	tab.hl = {}
+	for i = 1, N_TAB do
+		tab.hl[i] = self:_D("Square", { Visible = false, Filled = true, Color = T.header, Size = V0, Position = V0, ZIndex = 4 })
+	end
+	-- two-colour bar on the left of the active tab
+	tab.bar = self:_D("Square", { Visible = false, Filled = true, Color = T.accent, Size = Vector2.new(3, TAB_H / 2), Position = V0, ZIndex = 6 })
+	tab.bar2 = self:_D("Square", { Visible = false, Filled = true, Color = T.accent2, Size = Vector2.new(3, TAB_H / 2), Position = V0, ZIndex = 6 })
+	tab.dot = self:_D("Circle", { Visible = false, Filled = true, Color = T.textDim, Radius = 3, NumSides = 16, Thickness = 1, Position = V0, ZIndex = 7 })
+	tab.txt = self:_D("Text", { Visible = false, Text = tab.name, Color = T.textDim, Size = 12, Font = FONT, Position = V0, ZIndex = 7 })
 	table.insert(self.tabs, tab)
 	if not self.activeTab then
 		self.activeTab = tab
@@ -1461,13 +1569,24 @@ end
 
 function Window:_UpdateTabColors()
 	local T = self.Theme
+	local base = T.header:Lerp(T.header2, 0.35)
 	for _, tab in ipairs(self.tabs) do
-		if tab == self.activeTab then
+		local active = tab == self.activeTab
+		local hov = tab == self.hoverTab
+		if active then
 			tab.txt.Color = T.text
-		elseif tab == self.hoverTab then
-			tab.txt.Color = T.textDim:Lerp(T.text, 0.6)
+			tab.dot.Color = T.accent
+		elseif hov then
+			tab.txt.Color = T.textDim:Lerp(T.text, 0.65)
+			tab.dot.Color = T.accent2
 		else
 			tab.txt.Color = T.textDim
+			tab.dot.Color = T.textDim:Lerp(T.header, 0.5)
+		end
+		tab.bar.Color = T.accent
+		tab.bar2.Color = T.accent2
+		for i, s in ipairs(tab.hl) do
+			s.Color = base:Lerp(T.accent, 0.34 * (1 - (i - 1) / (N_TAB - 1)))
 		end
 	end
 end
@@ -1476,18 +1595,25 @@ end
 function Window:_LayoutTabs(show)
 	local x = self.x
 	local top = self.y + HEADER_H + 10
+	local HW = SIDEBAR_W - 16
 	for i, tab in ipairs(self.tabs) do
 		local active = tab == self.activeTab
 		local iy = top + (i - 1) * TAB_STEP
 		tab.txt.Visible = show
-		tab.bgSq.Visible = show and active
+		tab.dot.Visible = show
 		tab.bar.Visible = show and active
+		tab.bar2.Visible = show and active
+		for _, s in ipairs(tab.hl) do s.Visible = show and active end
 		if show then
-			tab.txt.Position = Vector2.new(x + 22, iy + 7)
-			tab.bgSq.Position = Vector2.new(x + 8, iy)
-			tab.bgSq.Size = Vector2.new(SIDEBAR_W - 16, TAB_H)
+			tab.txt.Position = Vector2.new(x + 32, iy + 8)
+			tab.dot.Position = Vector2.new(x + 21, iy + TAB_H / 2)
 			tab.bar.Position = Vector2.new(x + 8, iy)
-			tab.bar.Size = Vector2.new(3, TAB_H)
+			tab.bar2.Position = Vector2.new(x + 8, iy + TAB_H / 2)
+			for k, s in ipairs(tab.hl) do
+				local x0, bw = band(k, N_TAB, HW)
+				s.Position = Vector2.new(x + 8 + x0, iy)
+				s.Size = Vector2.new(bw, TAB_H)
+			end
 		end
 	end
 	self:_UpdateTabColors()
@@ -1535,50 +1661,61 @@ function Window:_Layout()
 	self.x, self.y = round(self.x), round(self.y)
 	local x, y, w = self.x, self.y, self.w
 	local curH = self:_CurHeight()
+	local ix, iw, ih = x + 1, w - 2, curH - 2
 
-	self.bg.Size = Vector2.new(w, curH)
-	self.bg.Position = Vector2.new(x, y)
 	self.bgBorder.Size = Vector2.new(w, curH)
 	self.bgBorder.Position = Vector2.new(x, y)
 
-	-- accent edge + sidebar
-	self.accent.Position = Vector2.new(x + 1, y + 1)
-	self.accent.Size = Vector2.new(2, curH - 2)
-	self.sbBg.Position = Vector2.new(x + 3, y + 1)
-	self.sbBg.Size = Vector2.new(SIDEBAR_W - 3, curH - 2)
-	self.sbLine.Position = Vector2.new(x + SIDEBAR_W, y + 1)
-	self.sbLine.Size = Vector2.new(1, curH - 2)
-	self.sbHeadLine.Position = Vector2.new(x + 3, y + HEADER_H)
-	self.sbHeadLine.Size = Vector2.new(SIDEBAR_W - 3, 1)
+	-- gradient bands: window body (full inner area), sidebar, top accent line
+	for i, s in ipairs(self.bgStrips) do
+		local y0, bh = band(i, N_BG, ih)
+		s.Position = Vector2.new(ix, y + 1 + y0)
+		s.Size = Vector2.new(iw, math.max(1, bh))
+	end
+	for i, s in ipairs(self.sbStrips) do
+		local y0, bh = band(i, N_SB, ih)
+		s.Position = Vector2.new(ix, y + 1 + y0)
+		s.Size = Vector2.new(SIDEBAR_W - 1, math.max(1, bh))
+	end
+	for i, s in ipairs(self.topStrips) do
+		local x0, bw = band(i, N_TOP, iw)
+		s.Position = Vector2.new(ix + x0, y + 1)
+		s.Size = Vector2.new(bw, 2)
+	end
+	self.sbLine.Position = Vector2.new(x + SIDEBAR_W, y + 3)
+	self.sbLine.Size = Vector2.new(1, math.max(1, ih - 2))
+	self.sbHeadLine.Position = Vector2.new(ix, y + HEADER_H)
+	self.sbHeadLine.Size = Vector2.new(SIDEBAR_W - 1, 1)
 	self.tbLine.Position = Vector2.new(x + SIDEBAR_W + 1, y + HEADER_H)
 	self.tbLine.Size = Vector2.new(w - SIDEBAR_W - 2, 1)
 
-	-- logo + titles (sidebar header)
-	self.logo.Position = Vector2.new(x + 23, y + 22)
-	self.logoTxt.Position = Vector2.new(x + 23, y + 15)
+	-- logo + titles (sidebar header, top left)
+	self.logoRing.Position = Vector2.new(x + 26, y + 24)
+	self.logo.Position = Vector2.new(x + 26, y + 24)
+	self.logoTxt.Position = Vector2.new(x + 26, y + 17)
 	local hasSub = self.subtitle ~= nil and self.subtitle ~= ""
-	self.titleTxt.Position = Vector2.new(x + 42, y + (hasSub and 8 or 15))
-	self.subTxt.Position = Vector2.new(x + 42, y + 24)
+	self.titleTxt.Position = Vector2.new(x + 48, y + (hasSub and 9 or 17))
+	self.subTxt.Position = Vector2.new(x + 48, y + 25)
 
-	-- top bar: breadcrumb + buttons
+	-- top bar: heading + round buttons
 	local hasCrumb = self:_UpdateCrumb()
-	self.crumbDot.Position = Vector2.new(x + SIDEBAR_W + 14, y + 19)
-	self.crumbTxt.Position = Vector2.new(x + SIDEBAR_W + 26, y + 15)
+	self.crumbTxt.Position = Vector2.new(x + SIDEBAR_W + 18, y + 16)
 
 	local rc = self.rc
-	rc.close = { x + w - 32, y + 11, 22, 22 }
-	rc.min = { x + w - 58, y + 11, 22, 22 }
-	rc.key = (not self.minimized) and { x + 12, y + curH - 30, SIDEBAR_W - 24, 20 } or nil
-	for _, name in ipairs({ "close", "min" }) do
-		local b, r = self.btn[name], rc[name]
-		b.box.Position = Vector2.new(r[1], r[2])
-		b.txt.Position = Vector2.new(r[1] + 11, r[2] + 4)
-	end
+	local bcy = y + 24
+	local ccx, mcx = x + w - 22, x + w - 48
+	rc.close = { ccx - 10, bcy - 10, 20, 20 }
+	rc.min = { mcx - 10, bcy - 10, 20, 20 }
+	rc.key = (not self.minimized) and { x + 12, y + curH - 34, SIDEBAR_W - 24, 22 } or nil
+	self.btn.close.box.Position = Vector2.new(ccx, bcy)
+	self.btn.close.txt.Position = Vector2.new(ccx, bcy - 7)
+	self.btn.min.box.Position = Vector2.new(mcx, bcy)
+	self.btn.min.txt.Position = Vector2.new(mcx, bcy - 7)
 	if rc.key then
 		self.keyLbl.Position = Vector2.new(rc.key[1], rc.key[2] - 14)
 		self.keyBox.Position = Vector2.new(rc.key[1], rc.key[2])
 		self.keyBdr.Position = Vector2.new(rc.key[1], rc.key[2])
-		self.keyTxt.Position = Vector2.new(rc.key[1] + rc.key[3] / 2, rc.key[2] + 4)
+		self.keyTxt.Position = Vector2.new(rc.key[1] + rc.key[3] / 2, rc.key[2] + 5)
 	end
 
 	for _, o in ipairs(self.chrome) do
@@ -1589,7 +1726,6 @@ function Window:_Layout()
 	end
 	self.subTxt.Visible = self.visible and hasSub
 	self.crumbTxt.Visible = self.visible and hasCrumb
-	self.crumbDot.Visible = self.visible and hasCrumb
 	self:_UpdateLogo()
 
 	local showBody = self.visible and not self.minimized
@@ -1643,8 +1779,10 @@ function Window:_ApplyTheme(changed)
 			pcall(setColor, e[1], self.Theme[e[2]])
 		end
 	end
+	self:_PaintChrome()
 	for _, tab in ipairs(self.tabs) do
 		for _, gb in ipairs(tab.groupboxes) do
+			pcall(gb._PaintHeader, gb)
 			for _, el in ipairs(gb.elements) do
 				pcall(el._ApplyTheme, el)
 			end
@@ -1693,7 +1831,7 @@ function Window:_RenderMenuKey()
 	else
 		self.keyTxt.Text = self:_Fit("[" .. keyName(self.toggleKey) .. "]", 12, SIDEBAR_W - 32)
 		self.keyTxt.Color = hov and T.text or T.textDim
-		self.keyBdr.Color = hov and T.accent or T.border
+		self.keyBdr.Color = hov and T.accent2 or T.border
 	end
 	self.keyBox.Color = hov and T.field:Lerp(T.accent, 0.18) or T.field
 end
@@ -2147,14 +2285,17 @@ function Tab:AddGroupbox(title, side)
 	gb.edgeR = F("Square", { Filled = true, Color = "border", Size = Vector2.new(1, 10), ZIndex = 3 })
 	gb.edgeT = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.gw, 1), ZIndex = 3 })
 	gb.edgeB = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.gw, 1), ZIndex = 3 })
-	-- header: small accent notch in front of the title and a thin rule underneath
-	gb.mark = F("Square", { Filled = true, Color = "accent", Size = Vector2.new(3, 11), ZIndex = 4 })
-	gb.sep = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.cw, 1), ZIndex = 3 })
+	-- header band: horizontal gradient that fades from the accent into the panel
+	gb.hdr = {}
+	for i = 1, N_HDR do
+		gb.hdr[i] = F("Square", { Filled = true, Color = win.Theme.panel, Size = V0, ZIndex = 3 })
+	end
 	if title ~= nil then
-		gb.titleTxt = F("Text", { Text = tostring(title), Color = "text", Size = 12, Font = FONT, ZIndex = 4 })
+		gb.titleTxt = F("Text", { Text = tostring(title), Color = "text", Size = 12, Font = FONT, ZIndex = 5 })
 	end
 
 	table.insert(self.groupboxes, gb)
+	gb:_PaintHeader()
 	win:_Layout()
 	return gb
 end
@@ -2185,6 +2326,15 @@ function Groupbox:_Height()
 		h = h + el.height
 	end
 	return h + 6
+end
+
+function Groupbox:_PaintHeader()
+	local T = self.window.Theme
+	local left = T.panel:Lerp(T.accent, 0.30)
+	local right = T.panel:Lerp(T.accent2, 0.06)
+	for i, s in ipairs(self.hdr) do
+		s.Color = left:Lerp(right, (i - 1) / (N_HDR - 1))
+	end
 end
 
 function Groupbox:_SetFrameVisible(v)
@@ -2221,17 +2371,23 @@ function Groupbox:_Place(gx, gy, top, bottom, showBody)
 	self.edgeB.Visible = bVis
 	if bVis then self.edgeB.Position = Vector2.new(gx, gy + h - 1) end
 
+	-- header gradient band (clipped to the visible range)
 	local hasTitle = self.title ~= nil
-	local hVis = showBody and hasTitle and gy + 8 >= top and gy + 22 <= bottom
-	self.mark.Visible = hVis
-	if hVis then self.mark.Position = Vector2.new(gx + PAD, gy + 9) end
-	if self.titleTxt then
-		self.titleTxt.Visible = hVis
-		if hVis then self.titleTxt.Position = Vector2.new(gx + PAD + 9, gy + 8) end
+	local hy1, hy2 = math.max(gy + 1, top), math.min(gy + GB_HEAD - 7, bottom)
+	local hVis = showBody and hasTitle and hy2 > hy1
+	for i, s in ipairs(self.hdr) do
+		s.Visible = hVis
+		if hVis then
+			local x0, bw = band(i, N_HDR, gw - 2)
+			s.Position = Vector2.new(gx + 1 + x0, hy1)
+			s.Size = Vector2.new(bw, hy2 - hy1)
+		end
 	end
-	local sVis = showBody and hasTitle and gy + GB_HEAD - 4 >= top and gy + GB_HEAD - 3 <= bottom
-	self.sep.Visible = sVis
-	if sVis then self.sep.Position = Vector2.new(gx + PAD, gy + GB_HEAD - 4) end
+	if self.titleTxt then
+		local tv = showBody and hasTitle and gy + 7 >= top and gy + 20 <= bottom
+		self.titleTxt.Visible = tv
+		if tv then self.titleTxt.Position = Vector2.new(gx + 12, gy + 8) end
+	end
 
 	local cy = gy + (hasTitle and GB_HEAD or 8)
 	for _, el in ipairs(self.elements) do
@@ -2251,7 +2407,7 @@ function Groupbox:SetTitle(t)
 	self.title = t
 	if t ~= nil then
 		if not self.titleTxt then
-			self.titleTxt = win:_D("Text", { Visible = false, Text = tostring(t), Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 4 }, self.frame)
+			self.titleTxt = win:_D("Text", { Visible = false, Text = tostring(t), Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, self.frame)
 		end
 		self.titleTxt.Text = tostring(t)
 	end
@@ -2259,30 +2415,81 @@ function Groupbox:SetTitle(t)
 end
 
 ----------------------------------------------------------------------
--- Divider (hairline with a short accent segment at the start)
+-- Divider (hairline that glows from the centre in the accent gradient)
 ----------------------------------------------------------------------
 
 function Groupbox:AddDivider()
 	local win, W = self.window, self.cw
-	local el = newElement(self, "Divider", 12)
+	local el = newElement(self, "Divider", 14)
 	el.lockable = false
-	el.line = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(W, 1), Position = V0, ZIndex = 3 }, el.objs)
-	el.seg = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(20, 1), Position = V0, ZIndex = 4 }, el.objs)
+	el.bands = {}
+	for i = 1, N_DIV do
+		el.bands[i] = win:_D("Square", { Visible = false, Filled = true, Color = win.Theme.panel, Size = V0, Position = V0, ZIndex = 4 }, el.objs)
+	end
+
+	function el:_Paint()
+		local T = win.Theme
+		for i, s in ipairs(self.bands) do
+			local t = 1 - math.abs(2 * (i - 0.5) / N_DIV - 1) -- 0 at the ends, 1 in the middle
+			local c = T.accent:Lerp(T.accent2, (i - 1) / (N_DIV - 1))
+			s.Color = T.border:Lerp(c, t * 0.85)
+		end
+	end
 
 	function el:Layout(x, y)
-		self.line.Position = Vector2.new(x, y + 6)
-		self.seg.Position = Vector2.new(x, y + 6)
+		for i, s in ipairs(self.bands) do
+			local x0, bw = band(i, N_DIV, W)
+			s.Position = Vector2.new(x + x0, y + 7)
+			s.Size = Vector2.new(bw, 1)
+		end
 	end
+
+	function el:_ApplyTheme() self:_Paint() end
 	function el:Get() return nil end
 	function el:SetValue() end
 	function el:SetTitle() end
 
+	el:_Paint()
 	return self:_Add(el)
 end
 
 ----------------------------------------------------------------------
--- Toggle (checkbox on the left, label to its right)
+-- Toggle (pill switch with a round knob; the "on" pill is an accent gradient)
 ----------------------------------------------------------------------
+
+local PILL_W, PILL_H = 34, 18
+
+-- builds the 4 shapes of a pill switch into el.objs
+local function buildPill(win, el)
+	local T = win.Theme
+	el.pL = win:_D("Circle", { Visible = false, Filled = true, Color = T.toggle_off, Radius = 9, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 3 }, el.objs)
+	el.pR = win:_D("Circle", { Visible = false, Filled = true, Color = T.toggle_off, Radius = 9, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 3 }, el.objs)
+	el.pM = win:_D("Square", { Visible = false, Filled = true, Color = T.toggle_off, Size = Vector2.new(PILL_W - PILL_H, PILL_H), Position = V0, ZIndex = 3 }, el.objs)
+	el.knob = win:_D("Circle", { Visible = false, Filled = true, Color = T.textDim, Radius = 6, NumSides = 20, Thickness = 1, Position = V0, ZIndex = 5 }, el.objs)
+end
+
+local function paintPill(win, el)
+	local T = win.Theme
+	if el.Value then
+		el.pL.Color = T.toggle_on
+		el.pR.Color = T.accent2
+		el.pM.Color = T.toggle_on:Lerp(T.accent2, 0.5)
+		el.knob.Color = (lum(T.toggle_on) > 0.75 and lum(T.accent2) > 0.5) and T.bg or WHITE
+	else
+		el.pL.Color, el.pR.Color, el.pM.Color = T.toggle_off, T.toggle_off, T.toggle_off
+		el.knob.Color = T.textDim
+	end
+	el.label.Color = el.Value and T.text or T.textDim
+end
+
+-- x = left edge of the pill, y = top of the element row
+local function layoutPill(el, x, y)
+	local cy = y + 14
+	el.pL.Position = Vector2.new(x + 9, cy)
+	el.pR.Position = Vector2.new(x + PILL_W - 9, cy)
+	el.pM.Position = Vector2.new(x + 9, cy - 9)
+	el.knob.Position = Vector2.new(el.Value and (x + PILL_W - 9) or (x + 9), cy)
+end
 
 function Groupbox:AddToggle(o)
 	o = o or {}
@@ -2294,28 +2501,16 @@ function Groupbox:AddToggle(o)
 	el.Callback = o.Callback
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = T.text, Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
-	el.track = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(16, 16), Position = V0, ZIndex = 3 }, el.objs)
-	el.trackBdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(16, 16), Position = V0, ZIndex = 4 }, el.objs)
-	el.knob = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(8, 8), Position = V0, ZIndex = 5 }, el.objs)
+	buildPill(win, el)
 
-	function el:_Paint()
-		local on = self.Value
-		self.track.Color = T.field
-		self.trackBdr.Color = on and T.toggle_on or T.border
-		self.knob.Color = on and T.toggle_on or T.field
-		self.label.Color = on and T.text or T.textDim
-	end
+	function el:_Paint() paintPill(win, self) end
 
 	function el:Layout(x, y)
-		self.label.Position = Vector2.new(x + 26, y + 7)
-		self.track.Position = Vector2.new(x, y + 6)
-		self.trackBdr.Position = Vector2.new(x, y + 6)
-		self.knob.Position = Vector2.new(x + 4, y + 10)
+		self.label.Position = Vector2.new(x, y + 7)
+		layoutPill(self, x + W - PILL_W, y)
 	end
 
-	function el:_ApplyTheme()
-		self:_Paint()
-	end
+	function el:_ApplyTheme() self:_Paint() end
 
 	function el:_Click()
 		self:SetValue(not self.Value)
@@ -2324,6 +2519,7 @@ function Groupbox:AddToggle(o)
 	function el:SetValue(v, silent)
 		self.Value = v and true or false
 		self:_Paint()
+		layoutPill(self, self.x + W - PILL_W, self.y)
 		if not silent then fire(self.Callback, self.Value) end
 	end
 
@@ -2409,11 +2605,11 @@ local function parseKey(def)
 end
 
 ----------------------------------------------------------------------
--- Keybind toggle (checkbox + label + key box on the right)
+-- Keybind toggle (label, key chip, pill switch)
 -- Options: Title, Default (bool), Key (KeyCode / UserInputType / name), Mode ("Toggle" | "Hold"),
 --          Callback(value), ChangedCallback(key), Locked, Flag
 -- Mode "Toggle": pressing the key flips the toggle. Mode "Hold": toggle is on while the key is held.
--- Clicking the checkbox works as well; clicking the key box binds a new key.
+-- Clicking the pill works as well; clicking the key chip binds a new key.
 ----------------------------------------------------------------------
 
 function Groupbox:AddKeybindToggle(o)
@@ -2430,44 +2626,34 @@ function Groupbox:AddKeybindToggle(o)
 	el.Key = parseKey(o.Key)
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = T.text, Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
-	el.track = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(16, 16), Position = V0, ZIndex = 3 }, el.objs)
-	el.trackBdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(16, 16), Position = V0, ZIndex = 4 }, el.objs)
-	el.knob = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(8, 8), Position = V0, ZIndex = 5 }, el.objs)
+	buildPill(win, el)
 	el.kbox = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(KB_W, 18), Position = V0, ZIndex = 3 }, el.objs)
-	el.kbdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(KB_W, 18), Position = V0, ZIndex = 4 }, el.objs)
+	el.kul = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(KB_W, 2), Position = V0, ZIndex = 4 }, el.objs)
 	el.ktxt = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
 
-	local function keyX() return el.x + W - KB_W end
+	local function keyX() return el.x + W - PILL_W - 8 - KB_W end
 
-	function el:_Paint()
-		local on = self.Value
-		self.track.Color = T.field
-		self.trackBdr.Color = on and T.toggle_on or T.border
-		self.knob.Color = on and T.toggle_on or T.field
-		self.label.Color = on and T.text or T.textDim
-	end
+	function el:_Paint() paintPill(win, self) end
 
 	function el:Layout(x, y)
-		local kx = x + W - KB_W
-		self.label.Position = Vector2.new(x + 26, y + 7)
-		self.track.Position = Vector2.new(x, y + 6)
-		self.trackBdr.Position = Vector2.new(x, y + 6)
-		self.knob.Position = Vector2.new(x + 4, y + 10)
+		local kx = x + W - PILL_W - 8 - KB_W
+		self.label.Position = Vector2.new(x, y + 7)
+		layoutPill(self, x + W - PILL_W, y)
 		self.kbox.Position = Vector2.new(kx, y + 5)
-		self.kbdr.Position = Vector2.new(kx, y + 5)
+		self.kul.Position = Vector2.new(kx, y + 21)
 		self.ktxt.Position = Vector2.new(kx + KB_W / 2, y + 8)
 	end
 
 	function el:_Render()
-		self.label.Text = win:_Fit(self.title, 13, W - 26 - KB_W - 8)
+		self.label.Text = win:_Fit(self.title, 13, W - PILL_W - 8 - KB_W - 8)
 		if self.listening then
 			self.ktxt.Text = "..."
 			self.ktxt.Color = T.accent
-			self.kbdr.Color = T.accent
+			self.kul.Color = T.accent
 		else
 			self.ktxt.Text = win:_Fit("[" .. keyName(self.Key) .. "]", 12, KB_W - 6)
 			self.ktxt.Color = T.textDim
-			self.kbdr.Color = T.border
+			self.kul.Color = T.border
 		end
 		self:_Paint()
 	end
@@ -2496,6 +2682,7 @@ function Groupbox:AddKeybindToggle(o)
 	function el:SetValue(v, silent)
 		self.Value = v and true or false
 		self:_Paint()
+		layoutPill(self, self.x + W - PILL_W, self.y)
 		if not silent then fire(self.Callback, self.Value) end
 	end
 
@@ -2533,32 +2720,59 @@ end
 
 ----------------------------------------------------------------------
 -- Button / Confirm button
--- flat field with an accent stripe on the left, left-aligned label, arrow on the right
+-- vertical gradient body (accent tint at the top), a two-colour line along the bottom,
+-- centred label. The confirm button turns warm and shows a countdown when armed.
 ----------------------------------------------------------------------
 
 local function buildButton(gb, o, confirm)
 	o = o or {}
 	local win, W = gb.window, gb.cw
 	local T = win.Theme
-	local el = newElement(gb, confirm and "ConfirmButton" or "Button", 36)
+	local el = newElement(gb, confirm and "ConfirmButton" or "Button", 38)
 	el.title = o.Title or (confirm and "Confirm Button" or "Button")
 	el.confirmTitle = o.ConfirmTitle or "Click again to confirm"
 	el.timeout = o.Timeout or 5 -- seconds before a confirm button returns to normal
 	el.Callback = o.Callback
 	el.armed = false
 
-	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BTN_H), Position = V0, ZIndex = 3 }, el.objs)
-	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(W, BTN_H), Position = V0, ZIndex = 4 }, el.objs)
-	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(3, BTN_H), Position = V0, ZIndex = 5 }, el.objs)
-	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
-	el.glyph = win:_D("Text", { Visible = false, Text = ">", Color = "accent", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+	el.strips = {}
+	for i = 1, N_BTN do
+		el.strips[i] = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = V0, Position = V0, ZIndex = 3 }, el.objs)
+	end
+	el.lineA = win:_D("Square", { Visible = false, Filled = true, Color = T.accent, Size = V0, Position = V0, ZIndex = 4 }, el.objs)
+	el.lineB = win:_D("Square", { Visible = false, Filled = true, Color = T.accent2, Size = V0, Position = V0, ZIndex = 4 }, el.objs)
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = T.text, Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
+
+	-- mode: nil (normal) / "flash"
+	function el:_Paint(mode)
+		local top
+		if mode == "flash" then
+			top = T.field:Lerp(T.accent, 0.55)
+		elseif self.armed then
+			top = T.field:Lerp(T.accent2, 0.42)
+		else
+			top = T.field:Lerp(T.accent, 0.24)
+		end
+		for i, s in ipairs(self.strips) do
+			s.Color = top:Lerp(T.field, (i - 1) / (N_BTN - 1))
+		end
+		self.lineA.Color = T.accent
+		self.lineB.Color = T.accent2
+	end
 
 	function el:Layout(x, y)
-		self.box.Position = Vector2.new(x, y + 6)
-		self.bdr.Position = Vector2.new(x, y + 6)
-		self.bar.Position = Vector2.new(x, y + 6)
-		self.label.Position = Vector2.new(x + 14, y + 12)
-		self.glyph.Position = Vector2.new(x + W - 16, y + 12)
+		local by = y + 6
+		for i, s in ipairs(self.strips) do
+			local y0, bh = band(i, N_BTN, BTN_H - 2)
+			s.Position = Vector2.new(x, by + y0)
+			s.Size = Vector2.new(W, bh)
+		end
+		local half = math.floor(W / 2)
+		self.lineA.Position = Vector2.new(x, by + BTN_H - 2)
+		self.lineA.Size = Vector2.new(half, 2)
+		self.lineB.Position = Vector2.new(x + half, by + BTN_H - 2)
+		self.lineB.Size = Vector2.new(W - half, 2)
+		self.label.Position = Vector2.new(x + W / 2, by + 6)
 	end
 
 	function el:_Render()
@@ -2567,22 +2781,19 @@ local function buildButton(gb, o, confirm)
 			if self.countdown then
 				txt = txt .. " (" .. self.countdown .. "s)"
 			end
-			self.label.Text = win:_Fit(txt, 12, W - 44)
-			self.label.Color = T.accent
-			self.bdr.Color = T.accent
-			self.glyph.Text = "!"
+			self.label.Text = win:_Fit(txt, 12, W - 16)
+			self.label.Color = WHITE
 		else
-			self.label.Text = win:_Fit(self.title, 12, W - 44)
+			self.label.Text = win:_Fit(self.title, 12, W - 16)
 			self.label.Color = T.text
-			self.bdr.Color = T.border
-			self.glyph.Text = ">"
 		end
+		self:_Paint()
 	end
 
 	function el:_Flash()
-		self.box.Color = T.accentDim
+		self:_Paint("flash")
 		task.delay(0.12, function()
-			if not self.destroyed then self.box.Color = T.field end
+			if not self.destroyed then self:_Paint() end
 		end)
 	end
 
@@ -2643,9 +2854,29 @@ function Groupbox:AddButton(o) return buildButton(self, o, false) end
 function Groupbox:AddConfirmButton(o) return buildButton(self, o, true) end
 
 ----------------------------------------------------------------------
+-- shared underline: two halves (accent / accent2) when active, border colour otherwise
+----------------------------------------------------------------------
+
+local function newUnderline(win, el, W)
+	el.ulA = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(math.floor(W / 2), 2), Position = V0, ZIndex = 4 }, el.objs)
+	el.ulB = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(W - math.floor(W / 2), 2), Position = V0, ZIndex = 4 }, el.objs)
+end
+
+local function placeUnderline(el, W, x, y)
+	el.ulA.Position = Vector2.new(x, y)
+	el.ulB.Position = Vector2.new(x + math.floor(W / 2), y)
+end
+
+local function paintUnderline(win, el, on)
+	local T = win.Theme
+	el.ulA.Color = on and T.accent or T.border
+	el.ulB.Color = on and T.accent2 or T.border
+end
+
+----------------------------------------------------------------------
 -- Dropdown / MultiDropdown
 -- Searchable = true works on both (typing filters the list)
--- the selected value(s) are marked with a thin accent bar and a tinted row (no font symbols)
+-- selected rows get a gradient-tinted background and a thin accent bar
 -- multi display: "None" / "Name" / "Name +N"
 ----------------------------------------------------------------------
 
@@ -2680,10 +2911,9 @@ local function buildList(gb, o, multi)
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
 	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 3 }, el.objs)
-	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 4 }, el.objs)
-	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(2, BOX_H), Position = V0, ZIndex = 5 }, el.objs)
+	newUnderline(win, el, W)
 	el.val = win:_D("Text", { Visible = false, Text = "", Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
-	el.arrow = win:_D("Text", { Visible = false, Text = "v", Color = "accent", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+	el.arrow = win:_D("Triangle", { Visible = false, Filled = true, Color = "accent", Thickness = 1, ZIndex = 5 }, el.objs)
 
 	if search then
 		el.sbg = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 8 }, el.pobjs)
@@ -2711,13 +2941,27 @@ local function buildList(gb, o, multi)
 
 	function el:_Render()
 		self.label.Text = self.title
-		local avail = W - 32
+		local avail = W - 34
 		local name, extra = self:_Parts()
 		if extra then
 			local suffix = " +" .. extra
 			self.val.Text = win:_Fit(name, 12, avail - win:_TextW(suffix, 12)) .. suffix
 		else
 			self.val.Text = win:_Fit(name, 12, avail)
+		end
+		paintUnderline(win, self, self.open)
+	end
+
+	function el:_PlaceArrow()
+		local ax, ay = self.x + W - 18, self.y + 18 + 8
+		if self.open then
+			self.arrow.PointA = Vector2.new(ax, ay + 5)
+			self.arrow.PointB = Vector2.new(ax + 9, ay + 5)
+			self.arrow.PointC = Vector2.new(ax + 4.5, ay)
+		else
+			self.arrow.PointA = Vector2.new(ax, ay)
+			self.arrow.PointB = Vector2.new(ax + 9, ay)
+			self.arrow.PointC = Vector2.new(ax + 4.5, ay + 5)
 		end
 	end
 
@@ -2739,10 +2983,9 @@ local function buildList(gb, o, multi)
 		local by = y + 18
 		self.label.Position = Vector2.new(x, y + 3)
 		self.box.Position = Vector2.new(x, by)
-		self.bdr.Position = Vector2.new(x, by)
-		self.bar.Position = Vector2.new(x, by)
-		self.val.Position = Vector2.new(x + 10, by + 5)
-		self.arrow.Position = Vector2.new(x + W - 16, by + 5)
+		placeUnderline(self, W, x, by + BOX_H - 2)
+		self.val.Position = Vector2.new(x + 8, by + 5)
+		self:_PlaceArrow()
 		if self.open then self:_PopupRefresh() end
 	end
 
@@ -2795,7 +3038,7 @@ local function buildList(gb, o, multi)
 		end
 
 		local rowsTop = cy
-		local tint = T.field:Lerp(T.accent, 0.14)
+		local tint = T.field:Lerp(T.accent, 0.16)
 		for i = 1, #self.rows do
 			local r = self.rows[i]
 			if i <= vis then
@@ -2897,6 +3140,8 @@ local function buildList(gb, o, multi)
 			end
 		end
 		if self.search then win.textTarget = self end
+		self:_PlaceArrow()
+		paintUnderline(win, self, true)
 		self:_PopupRefresh()
 	end
 
@@ -2904,6 +3149,8 @@ local function buildList(gb, o, multi)
 		self.open = false
 		for _, obj in ipairs(self.pobjs) do obj.Visible = false end
 		if win.textTarget == self then win.textTarget = nil end
+		self:_PlaceArrow()
+		paintUnderline(win, self, false)
 	end
 
 	function el:_Click(mx, my)
@@ -3001,7 +3248,7 @@ function Groupbox:AddDropdown(o) return buildList(self, o, false) end
 function Groupbox:AddMultiDropdown(o) return buildList(self, o, true) end
 
 ----------------------------------------------------------------------
--- Input (text box with an underline instead of a full outline)
+-- Input (text box; the underline lights up in the accent gradient while focused)
 ----------------------------------------------------------------------
 
 function Groupbox:AddInput(o)
@@ -3022,26 +3269,25 @@ function Groupbox:AddInput(o)
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
 	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 3 }, el.objs)
-	el.bdr = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(W, 2), Position = V0, ZIndex = 4 }, el.objs)
+	newUnderline(win, el, W)
 	el.txt = win:_D("Text", { Visible = false, Text = "", Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
 
 	function el:Layout(x, y)
 		self.label.Position = Vector2.new(x, y + 3)
 		self.box.Position = Vector2.new(x, y + 18)
-		self.bdr.Position = Vector2.new(x, y + 18 + BOX_H - 2)
+		placeUnderline(self, W, x, y + 18 + BOX_H - 2)
 		self.txt.Position = Vector2.new(x + 8, y + 22)
 	end
 
 	function el:_Render()
 		local maxW = W - 16
 		self.label.Text = self.title
+		paintUnderline(win, self, self.focused)
 		if self.focused then
 			local cur = (math.floor(os.clock() * 2) % 2 == 0) and "|" or ""
 			self.txt.Text = win:_FitTail(self.text .. cur, 12, maxW)
 			self.txt.Color = T.text
-			self.bdr.Color = T.accent
 		else
-			self.bdr.Color = T.border
 			if self.text == "" then
 				self.txt.Text = win:_Fit(self.placeholder, 12, maxW)
 				self.txt.Color = T.textDim
@@ -3126,13 +3372,15 @@ end
 
 ----------------------------------------------------------------------
 -- Slider
--- thin track with a round knob; the value sits (accent coloured) in a fixed-width
--- area on the right, so its position never depends on measuring the text
+-- capsule track, gradient fill (accent -> accent2), round knob with a ring.
+-- The value sits in a small fixed-width chip on the right, so its position
+-- never depends on measuring the text.
 ----------------------------------------------------------------------
 
 function Groupbox:AddSlider(o)
 	o = o or {}
 	local win, W = self.window, self.cw
+	local T = win.Theme
 	local el = newElement(self, "Slider", 40)
 	el.title = o.Title or "Slider"
 	el.min = o.Min or 0
@@ -3165,14 +3413,29 @@ function Groupbox:AddSlider(o)
 	el.boxW = clamp(widest * 7 + 14, 36, math.floor(W * 0.5))
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.valBox = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(el.boxW, 18), Position = V0, ZIndex = 3 }, el.objs)
 	el.valTxt = win:_D("Text", { Visible = false, Text = "", Color = "accent", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
-	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, 4), Position = V0, ZIndex = 3 }, el.objs)
-	el.fill = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(0, 4), Position = V0, ZIndex = 4 }, el.objs)
-	el.knob = win:_D("Circle", { Visible = false, Filled = true, Color = "text", Radius = 6, NumSides = 20, Thickness = 1, Position = V0, ZIndex = 5 }, el.objs)
+	-- capsule track: two end caps + middle
+	el.tL = win:_D("Circle", { Visible = false, Filled = true, Color = "field", Radius = 3, NumSides = 12, Thickness = 1, Position = V0, ZIndex = 3 }, el.objs)
+	el.tR = win:_D("Circle", { Visible = false, Filled = true, Color = "field", Radius = 3, NumSides = 12, Thickness = 1, Position = V0, ZIndex = 3 }, el.objs)
+	el.tM = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W - 6, 6), Position = V0, ZIndex = 3 }, el.objs)
+	el.fills = {}
+	for k = 1, N_FILL do
+		el.fills[k] = win:_D("Square", { Visible = false, Filled = true, Color = T.accent, Size = V0, Position = V0, ZIndex = 4 }, el.objs)
+	end
+	el.ring = win:_D("Circle", { Visible = false, Filled = false, Color = "accent2", Radius = 8, NumSides = 24, Thickness = 2, Position = V0, ZIndex = 6 }, el.objs)
+	el.knob = win:_D("Circle", { Visible = false, Filled = true, Color = "text", Radius = 7, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:_PaintFill()
+		for k, s in ipairs(self.fills) do
+			s.Color = T.accent:Lerp(T.accent2, (k - 1) / (N_FILL - 1))
+		end
+	end
 
 	function el:_Render()
 		self.label.Text = win:_Fit(self.title, 13, W - self.boxW - 8)
 		self.valTxt.Text = fmt(self.Value)
+		self:_PaintFill()
 	end
 
 	function el:Layout(x, y)
@@ -3181,11 +3444,21 @@ function Groupbox:AddSlider(o)
 		local bx = x + W - self.boxW
 		self.valTxt.Text = fmt(self.Value)
 		self.label.Position = Vector2.new(x, y + 4)
+		self.valBox.Position = Vector2.new(bx, y + 2)
 		self.valTxt.Position = Vector2.new(bx + self.boxW / 2, y + 5)
-		self.bar.Position = Vector2.new(x, y + 26)
-		self.fill.Position = Vector2.new(x, y + 26)
-		self.fill.Size = Vector2.new(math.max(0, frac * W), 4)
-		self.knob.Position = Vector2.new(x + frac * W, y + 28)
+		-- track
+		self.tL.Position = Vector2.new(x + 3, y + 27)
+		self.tR.Position = Vector2.new(x + W - 3, y + 27)
+		self.tM.Position = Vector2.new(x + 3, y + 24)
+		-- fill: gradient bands stretched over the filled width
+		local fw = frac * W
+		for k, s in ipairs(self.fills) do
+			local x0, bw = band(k, N_FILL, fw)
+			s.Position = Vector2.new(x + x0, y + 24)
+			s.Size = Vector2.new(bw, 6)
+		end
+		self.knob.Position = Vector2.new(x + fw, y + 27)
+		self.ring.Position = Vector2.new(x + fw, y + 27)
 	end
 
 	function el:_SetFromMouse(mx)
@@ -3223,7 +3496,7 @@ function Groupbox:AddSlider(o)
 end
 
 ----------------------------------------------------------------------
--- Paragraph (text with a thin guide line on the left)
+-- Paragraph (tinted callout box with a two-colour bar on the left)
 ----------------------------------------------------------------------
 
 function Groupbox:AddParagraph(o)
@@ -3235,44 +3508,54 @@ function Groupbox:AddParagraph(o)
 	el.text = tostring(o.Text or "")
 	el.lines = {}
 	el.count = 0
-	el.guide = win:_D("Square", { Visible = false, Filled = true, Color = "accentDim", Size = Vector2.new(2, 10), Position = V0, ZIndex = 3 })
+	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, 10), Position = V0, ZIndex = 3 })
+	el.barA = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(3, 5), Position = V0, ZIndex = 4 })
+	el.barB = win:_D("Square", { Visible = false, Filled = true, Color = "accent2", Size = Vector2.new(3, 5), Position = V0, ZIndex = 4 })
 
 	local function ensureHead()
 		if el.title and not el.head then
-			el.head = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 })
+			el.head = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 5 })
 		end
 	end
 	ensureHead()
 
 	function el:_Rebuild(noLayout)
-		local wrapped = win:_Wrap(self.text, 12, W - 10)
+		local wrapped = win:_Wrap(self.text, 12, W - 24)
 		self.count = #wrapped
 		for i = #self.lines + 1, self.count do
-			self.lines[i] = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 3 })
+			self.lines[i] = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 5 })
 		end
 		for i = 1, #self.lines do
 			self.lines[i].Text = wrapped[i] or ""
 		end
 		if self.head then self.head.Text = tostring(self.title) end
-		self.height = 4 + (self.title and 17 or 0) + self.count * 14 + 6
-		self.guide.Size = Vector2.new(2, math.max(4, self.height - 8))
+		self.height = 18 + (self.title and 17 or 0) + self.count * 14
+		local bh = self.height - 4
+		self.box.Size = Vector2.new(W, bh)
+		self.barA.Size = Vector2.new(3, math.floor(bh / 2))
+		self.barB.Size = Vector2.new(3, bh - math.floor(bh / 2))
 		if not noLayout then win:_Layout() end
 	end
 
 	function el:Layout(x, y)
-		local ly = y + 4
-		self.guide.Position = Vector2.new(x, y + 4)
+		local bh = self.height - 4
+		self.box.Position = Vector2.new(x, y + 2)
+		self.barA.Position = Vector2.new(x, y + 2)
+		self.barB.Position = Vector2.new(x, y + 2 + math.floor(bh / 2))
+		local ly = y + 9
 		if self.head then
-			self.head.Position = Vector2.new(x + 10, ly)
+			self.head.Position = Vector2.new(x + 12, ly)
 		end
 		if self.title then ly = ly + 17 end
 		for i = 1, #self.lines do
-			self.lines[i].Position = Vector2.new(x + 10, ly + (i - 1) * 14)
+			self.lines[i].Position = Vector2.new(x + 12, ly + (i - 1) * 14)
 		end
 	end
 
 	function el:SetVisible(v)
-		self.guide.Visible = v
+		self.box.Visible = v
+		self.barA.Visible = v
+		self.barB.Visible = v
 		if self.head then self.head.Visible = v and self.title ~= nil end
 		for i, l in ipairs(self.lines) do
 			l.Visible = v and i <= self.count
@@ -3294,7 +3577,9 @@ function Groupbox:AddParagraph(o)
 	function el:Get() return self.text end
 
 	function el:Destroy()
-		pcall(function() self.guide:Remove() end)
+		pcall(function() self.box:Remove() end)
+		pcall(function() self.barA:Remove() end)
+		pcall(function() self.barB:Remove() end)
 		if self.head then pcall(function() self.head:Remove() end) end
 		for _, l in ipairs(self.lines) do pcall(function() l:Remove() end) end
 		Element.Destroy(self)
@@ -3305,7 +3590,7 @@ function Groupbox:AddParagraph(o)
 end
 
 ----------------------------------------------------------------------
--- Keybind
+-- Keybind (label on the left, key chip with a gradient underline on the right)
 ----------------------------------------------------------------------
 
 function Groupbox:AddKeybind(o)
@@ -3323,14 +3608,14 @@ function Groupbox:AddKeybind(o)
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
 	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(64, 18), Position = V0, ZIndex = 3 }, el.objs)
-	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(64, 18), Position = V0, ZIndex = 4 }, el.objs)
+	newUnderline(win, el, 64)
 	el.txt = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
 
 	function el:Layout(x, y)
 		local bx = x + W - 64
 		self.label.Position = Vector2.new(x, y + 7)
 		self.box.Position = Vector2.new(bx, y + 5)
-		self.bdr.Position = Vector2.new(bx, y + 5)
+		placeUnderline(self, 64, bx, y + 21)
 		self.txt.Position = Vector2.new(bx + 32, y + 8)
 	end
 
@@ -3339,12 +3624,11 @@ function Groupbox:AddKeybind(o)
 		if self.listening then
 			self.txt.Text = "..."
 			self.txt.Color = T.accent
-			self.bdr.Color = T.accent
 		else
 			self.txt.Text = win:_Fit("[" .. keyName(self.Key) .. "]", 12, 58)
 			self.txt.Color = T.textDim
-			self.bdr.Color = T.border
 		end
+		paintUnderline(win, self, self.listening)
 	end
 
 	function el:_Click(mx, my)
@@ -3400,14 +3684,13 @@ function Groupbox:AddKeybind(o)
 end
 
 ----------------------------------------------------------------------
--- Color picker (swatch on the left, label to its right)
+-- Color picker (label on the left, round swatch with a ring on the right)
 ----------------------------------------------------------------------
 
 local PW, PH, CS = 130, 100, 5              -- palette size, cell size
 local COLS, ROWS = PW / CS, PH / CS         -- 26 x 20
 local ABW, HH = 14, 14                      -- alpha bar width, hue bar height
 local POP_H = 8 + PH + 8 + HH + 6 + 14 + 8
-local SW_W, SW_H = 24, 18                   -- swatch size
 
 function Groupbox:AddColorPicker(o)
 	o = o or {}
@@ -3426,18 +3709,9 @@ function Groupbox:AddColorPicker(o)
 	el.built = false
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
-	el.swBase = win:_D("Square", { Visible = false, Filled = true, Color = Color3.fromRGB(200, 200, 200), Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 3 }, el.objs)
-	el.swDark = {}
-	for r = 0, 2 do
-		for c = 0, 3 do
-			if (r + c) % 2 == 1 then
-				local d = win:_D("Square", { Visible = false, Filled = true, Color = Color3.fromRGB(140, 140, 140), Size = Vector2.new(6, 6), Position = V0, ZIndex = 4 }, el.objs)
-				table.insert(el.swDark, { obj = d, ox = c * 6, oy = r * 6 })
-			end
-		end
-	end
-	el.swatch = win:_D("Square", { Visible = false, Filled = true, Color = c0, Transparency = 1 - el.Transparency, Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 5 }, el.objs)
-	el.swBdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 6 }, el.objs)
+	el.swBase = win:_D("Circle", { Visible = false, Filled = true, Color = Color3.fromRGB(150, 150, 150), Radius = 8, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 3 }, el.objs)
+	el.swatch = win:_D("Circle", { Visible = false, Filled = true, Color = c0, Transparency = 1 - el.Transparency, Radius = 8, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 5 }, el.objs)
+	el.swRing = win:_D("Circle", { Visible = false, Filled = false, Color = "accent2", Radius = 10, NumSides = 28, Thickness = 2, Position = V0, ZIndex = 6 }, el.objs)
 
 	-- the swatch has its own transparency (the colour's alpha), so the lock dimming is applied on top of it
 	function el:_AfterLock(a)
@@ -3449,13 +3723,11 @@ function Groupbox:AddColorPicker(o)
 	end
 
 	function el:Layout(x, y)
-		self.label.Position = Vector2.new(x + SW_W + 8, y + 7)
-		self.swBase.Position = Vector2.new(x, y + 5)
-		for _, d in ipairs(self.swDark) do
-			d.obj.Position = Vector2.new(x + d.ox, y + 5 + d.oy)
-		end
-		self.swatch.Position = Vector2.new(x, y + 5)
-		self.swBdr.Position = Vector2.new(x, y + 5)
+		self.label.Position = Vector2.new(x, y + 7)
+		local cx, cy = x + W - 11, y + 14
+		self.swBase.Position = Vector2.new(cx, cy)
+		self.swatch.Position = Vector2.new(cx, cy)
+		self.swRing.Position = Vector2.new(cx, cy)
 		if self.open then self:_PlacePopup() end
 	end
 
@@ -3472,7 +3744,7 @@ function Groupbox:AddColorPicker(o)
 		local black, white = Color3.fromRGB(0, 0, 0), Color3.fromRGB(255, 255, 255)
 
 		self.pbg = Dp("Square", { Filled = true, Color = "field", Size = Vector2.new(self.popW, POP_H), ZIndex = 20 })
-		self.pbdr = Dp("Square", { Filled = false, Color = "accentDim", Thickness = 1, Size = Vector2.new(self.popW, POP_H), ZIndex = 21 })
+		self.pbdr = Dp("Square", { Filled = false, Color = "accent2", Thickness = 1, Size = Vector2.new(self.popW, POP_H), ZIndex = 21 })
 
 		self.svCells = {}
 		for r = 1, ROWS do
@@ -3520,10 +3792,10 @@ function Groupbox:AddColorPicker(o)
 
 	function el:_PlacePopup()
 		local x, y = self.x, self.y
-		-- anchored under the swatch, kept inside the content area of the window
-		local px = math.min(x, win.x + win.w - 4 - self.popW)
+		-- right-aligned under the swatch, kept inside the content area of the window
+		local px = math.min(x + W - self.popW, win.x + win.w - 4 - self.popW)
 		px = math.max(win.x + SIDEBAR_W + 4, px)
-		local py = y + 28
+		local py = y + 32
 		local svX, svY = px + 8, py + 8
 		local abX = svX + PW + 8
 		local hueY = svY + PH + 8
@@ -4001,7 +4273,7 @@ end
 -- The theme file is only read once at startup; after that the player picks
 -- freely (each pick is written back to themes.txt), and an autoloaded
 -- config (which also carries a theme) gets the final say.
--- (a saved theme name that no longer exists, e.g. "Default" / "Light", is ignored)
+-- (a saved theme name that no longer exists, e.g. "Dark" / "Midnight", is ignored)
 ----------------------------------------------------------------------
 
 function Window:AddSettingsTab(opts)
@@ -4035,7 +4307,7 @@ function Window:AddSettingsTab(opts)
 	self.themeDropdown = themeBox:AddDropdown({
 		Title = "Theme",
 		Options = Library.ThemePresetOrder,
-		Default = self.themeName or "Dark",
+		Default = self.themeName or "Aurora",
 		MaxVisible = 8,
 		Callback = function(name) self:SetThemePreset(name) end,
 	})
