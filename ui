@@ -1,0 +1,4056 @@
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local CAS = game:GetService("ContextActionService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local Library = { Windows = {} }
+Library.__index = Library
+
+----------------------------------------------------------------------
+-- themes
+----------------------------------------------------------------------
+
+local function C3(t)
+	return Color3.fromRGB(t[1], t[2], t[3])
+end
+
+-- bg = window body / top bar, header = sidebar, panel = groupbox background,
+-- field = inputs / dropdown boxes / buttons, toggleOn = (optional) colour of an enabled toggle
+local function preset(bg, header, accent, accentDim, border, text, textDim, toggleOff, panel, field, toggleOn)
+	return {
+		bg = C3(bg), header = C3(header), accent = C3(accent), accentDim = C3(accentDim),
+		border = C3(border), text = C3(text), textDim = C3(textDim),
+		toggle_on = C3(toggleOn or accent), toggle_off = C3(toggleOff), panel = C3(panel), field = C3(field),
+	}
+end
+
+Library.ThemePresets = {
+	Dark       = preset({18, 18, 20},  {13, 13, 15},  {64, 140, 255},  {36, 78, 148},  {46, 46, 53},   {228, 228, 232}, {128, 128, 138}, {44, 44, 50},   {23, 23, 26},  {32, 32, 36}),
+	Midnight   = preset({10, 12, 24},  {7, 9, 18},    {118, 108, 255}, {62, 56, 150},  {38, 42, 70},   {226, 229, 246}, {120, 126, 160}, {32, 36, 62},   {14, 17, 32},  {22, 26, 46}),
+	Crimson    = preset({16, 11, 12},  {11, 7, 8},    {232, 64, 84},   {128, 34, 48},  {58, 38, 42},   {238, 225, 227}, {146, 118, 122}, {48, 32, 35},   {21, 14, 16},  {32, 22, 25}),
+	Emerald    = preset({10, 16, 14},  {7, 11, 10},   {46, 204, 134},  {24, 110, 72},  {36, 62, 52},   {222, 238, 230}, {114, 146, 130}, {30, 48, 40},   {13, 21, 18},  {21, 33, 28}),
+	Sunset     = preset({18, 13, 11},  {12, 8, 7},    {255, 146, 60},  {146, 78, 28},  {64, 46, 38},   {240, 228, 218}, {152, 130, 114}, {50, 37, 30},   {24, 17, 14},  {36, 27, 22}),
+	Rose       = preset({18, 12, 16},  {12, 7, 11},   {240, 98, 168},  {132, 50, 96},  {62, 40, 56},   {240, 224, 234}, {150, 120, 140}, {50, 34, 45},   {24, 16, 21},  {36, 25, 32}),
+	Monochrome = preset({12, 12, 12},  {8, 8, 8},     {190, 190, 190}, {100, 100, 100}, {48, 48, 48},   {238, 238, 238}, {128, 128, 128}, {38, 38, 38},   {17, 17, 17},  {27, 27, 27}, {255, 255, 255}),
+}
+Library.ThemePresetOrder = { "Dark", "Midnight", "Crimson", "Emerald", "Sunset", "Rose", "Monochrome" }
+
+local function copyTable(t)
+	local n = {}
+	for k, v in pairs(t) do n[k] = v end
+	return n
+end
+
+Library.Theme = copyTable(Library.ThemePresets.Dark)
+
+----------------------------------------------------------------------
+-- constants / classes
+----------------------------------------------------------------------
+
+local HEADER_H = 44    -- top bar height (also the height of the sidebar's logo area)
+local SIDEBAR_W = 132  -- left navigation sidebar width
+local TAB_H = 26       -- one entry in the sidebar
+local TAB_STEP = 30    -- vertical step between sidebar entries
+local FONT = 2
+local BOX_H = 22
+local BTN_H = 24
+local MARGIN = 10    -- content edge -> groupbox
+local GAP = 10       -- between groupboxes
+local PAD = 10       -- groupbox edge -> element content
+local GB_HEAD = 28   -- titled groupbox header height
+local V0 = Vector2.new(0, 0)
+local LOCK_ALPHA = 0.4 -- opacity of a locked element
+local KB_W = 54        -- key box width of the keybind toggle
+
+local Window, Tab, Groupbox, Element = {}, {}, {}, {}
+Window.__index = Window
+Tab.__index = Tab
+Groupbox.__index = Groupbox
+Element.__index = Element
+
+local ADD_METHODS = {
+	"AddToggle", "AddKeybindToggle", "AddButton", "AddConfirmButton", "AddDropdown", "AddMultiDropdown",
+	"AddInput", "AddSlider", "AddParagraph", "AddKeybind",
+	"AddColorPicker", "AddDivider",
+}
+
+----------------------------------------------------------------------
+-- helpers
+----------------------------------------------------------------------
+
+local function inRect(mx, my, x, y, w, h)
+	return mx >= x and mx <= x + w and my >= y and my <= y + h
+end
+
+local function clamp(v, a, b)
+	return math.max(a, math.min(b, v))
+end
+
+local function round(v)
+	return math.floor(v + 0.5)
+end
+
+local function lum(c)
+	return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
+end
+
+local function fire(cb, ...)
+	if type(cb) ~= "function" then
+		return
+	end
+	local ok, err = pcall(cb, ...)
+	if not ok then
+		warn("[Library] callback error: " .. tostring(err))
+	end
+end
+
+local function setColor(obj, color)
+	obj.Color = color
+end
+
+local function keyName(k)
+	if k == nil then
+		return "None"
+	end
+	if k.EnumType == Enum.UserInputType then
+		if k == Enum.UserInputType.MouseButton1 then return "MB1" end
+		if k == Enum.UserInputType.MouseButton2 then return "MB2" end
+		if k == Enum.UserInputType.MouseButton3 then return "MB3" end
+		return k.Name
+	end
+	local n = k.Name
+	n = n:gsub("^Left(%u)", "L%1")
+	n = n:gsub("^Right(%u)", "R%1")
+	n = n:gsub("Control", "Ctrl")
+	return n
+end
+
+local function matchKey(input, key)
+	if key.EnumType == Enum.KeyCode then
+		return input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == key
+	end
+	return input.UserInputType == key
+end
+
+-- physical state of a bound key / mouse button (independent of what the game did with the event)
+local function isDown(key)
+	if key == nil then
+		return false
+	end
+	if key.EnumType == Enum.KeyCode then
+		return UIS:IsKeyDown(key)
+	end
+	local ok, r = pcall(function() return UIS:IsMouseButtonPressed(key) end)
+	return ok and r == true
+end
+
+local function encodeKey(k)
+	if k == nil then
+		return { t = "None" }
+	end
+	return { t = (k.EnumType == Enum.KeyCode) and "KeyCode" or "UserInputType", n = k.Name }
+end
+
+-- returns key, valid
+local function decodeKey(v)
+	if type(v) ~= "table" or v.t == nil or v.t == "None" then
+		return nil, type(v) == "table"
+	end
+	local ok, item = pcall(function() return Enum[v.t][v.n] end)
+	if ok and item then
+		return item, true
+	end
+	return nil, false
+end
+
+local DIGITS = { Zero = 0, One = 1, Two = 2, Three = 3, Four = 4, Five = 5, Six = 6, Seven = 7, Eight = 8, Nine = 9 }
+local SHIFT_DIGITS = { [0] = ")", "!", "@", "#", "$", "%", "^", "&", "*", "(" }
+local PUNCT = {
+	Space = { " ", " " }, Minus = { "-", "_" }, Equals = { "=", "+" }, Period = { ".", ">" },
+	Comma = { ",", "<" }, Slash = { "/", "?" }, Semicolon = { ";", ":" }, Quote = { "'", '"' },
+	LeftBracket = { "[", "{" }, RightBracket = { "]", "}" }, BackSlash = { "\\", "|" },
+	Backquote = { "`", "~" }, KeypadPeriod = { ".", "." }, KeypadMinus = { "-", "-" },
+}
+
+local function keyToChar(kc)
+	local shift = UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift)
+	local n = kc.Name
+	if #n == 1 and n:match("%a") then
+		return shift and n:upper() or n:lower()
+	end
+	local digitName = n:gsub("^Keypad", "")
+	local d = DIGITS[n] or DIGITS[digitName]
+	if d ~= nil then
+		if shift and DIGITS[n] ~= nil then
+			return SHIFT_DIGITS[d]
+		end
+		return tostring(d)
+	end
+	local p = PUNCT[n]
+	if p then
+		return shift and p[2] or p[1]
+	end
+	return nil
+end
+
+----------------------------------------------------------------------
+-- text measuring (shared by windows and notifications)
+-- widths are cached so a string always measures the same.
+-- TextBounds can be stale right after Text is changed (that is what made
+-- dropdown values collapse to "..."), so every read is sanity checked and
+-- implausible values are replaced by an estimate that is never cached.
+----------------------------------------------------------------------
+
+local measurer
+local widthCache, cacheCount = {}, 0
+
+local function releaseMeasurer()
+	if measurer then
+		pcall(function() measurer:Remove() end)
+		measurer = nil
+	end
+	widthCache, cacheCount = {}, 0
+end
+
+local function textW(str, size)
+	str = tostring(str)
+	if str == "" then
+		return 0
+	end
+	local key = size .. ":" .. str
+	local hit = widthCache[key]
+	if hit then
+		return hit
+	end
+	if not measurer then
+		measurer = Drawing.new("Text")
+		measurer.Font = FONT
+		measurer.Visible = true
+		measurer.Transparency = 0
+	end
+	measurer.Size = size
+	measurer.Text = "" -- forces the bounds to be recomputed for the new string
+	measurer.Text = str
+	local ok, b = pcall(function() return measurer.TextBounds end)
+	local w = (ok and b) and b.X or 0
+	local est = #str * size * 0.55
+	if w <= 0 or w < #str * size * 0.2 or w > #str * size * 1.1 then
+		return est -- unreliable read: estimate, not cached
+	end
+	if cacheCount > 3000 then
+		widthCache, cacheCount = {}, 0
+	end
+	widthCache[key] = w
+	cacheCount = cacheCount + 1
+	return w
+end
+
+local function fitText(str, size, maxW)
+	str = tostring(str)
+	if textW(str, size) <= maxW then
+		return str
+	end
+	local s = str
+	while #s > 1 and textW(s .. "...", size) > maxW do
+		s = s:sub(1, -2)
+	end
+	return s .. "..."
+end
+
+local function fitTail(str, size, maxW)
+	local s = tostring(str)
+	while #s > 1 and textW(s, size) > maxW do
+		s = s:sub(2)
+	end
+	return s
+end
+
+local function wrapText(text, size, maxW)
+	local lines = {}
+	for para in (tostring(text) .. "\n"):gmatch("(.-)\n") do
+		local line = ""
+		for word in para:gmatch("%S+") do
+			local try = (line == "") and word or (line .. " " .. word)
+			if line == "" or textW(try, size) <= maxW then
+				line = try
+			else
+				table.insert(lines, line)
+				line = word
+			end
+			while textW(line, size) > maxW and #line > 1 do
+				local cut = #line
+				while cut > 1 and textW(line:sub(1, cut), size) > maxW do
+					cut = cut - 1
+				end
+				table.insert(lines, line:sub(1, cut))
+				line = line:sub(cut + 1)
+			end
+		end
+		table.insert(lines, line)
+	end
+	return lines
+end
+
+----------------------------------------------------------------------
+-- file storage (configs)
+----------------------------------------------------------------------
+
+local FS = {}
+
+function FS.supported()
+	return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
+		and type(isfolder) == "function" and type(makefolder) == "function"
+		and type(listfiles) == "function" and type(delfile) == "function"
+end
+
+local function ensureFolder(path)
+	local acc = ""
+	for part in path:gmatch("[^/]+") do
+		acc = (acc == "") and part or (acc .. "/" .. part)
+		if not isfolder(acc) then
+			makefolder(acc)
+		end
+	end
+end
+
+local function cleanName(n)
+	n = tostring(n or "")
+	n = n:gsub("^%s+", "")
+	n = n:gsub("%s+$", "")
+	if n == "" then return nil, "Enter a name first" end
+	if #n > 32 then return nil, "Name is too long (max 32 characters)" end
+	if not n:match("^[%w _%-]+$") then return nil, "Use only letters, numbers, spaces, - and _" end
+	return n
+end
+
+local NO_FS = "File functions are not supported by this executor"
+
+local Store = {}
+Store.__index = Store
+
+function Store.new(root, sub)
+	local self = setmetatable({}, Store)
+	self.root = root
+	self.dir = root .. "/" .. sub
+	self.autoPath = root .. "/" .. sub .. "_autoload.txt"
+	if FS.supported() then
+		pcall(ensureFolder, self.dir)
+	end
+	return self
+end
+
+function Store:_path(name)
+	return self.dir .. "/" .. name .. ".json"
+end
+
+function Store:List()
+	local out = {}
+	if not FS.supported() then return out end
+	local ok, files = pcall(listfiles, self.dir)
+	if not ok or type(files) ~= "table" then return out end
+	for _, f in ipairs(files) do
+		local name = tostring(f):match("([^/\\]+)%.json$")
+		if name then table.insert(out, name) end
+	end
+	table.sort(out, function(a, b) return a:lower() < b:lower() end)
+	return out
+end
+
+function Store:Exists(name)
+	if not FS.supported() then return false end
+	local ok, r = pcall(isfile, self:_path(name))
+	return ok and r == true
+end
+
+function Store:Write(name, data)
+	if not FS.supported() then return false, NO_FS end
+	local ok, enc = pcall(function() return HttpService:JSONEncode(data) end)
+	if not ok then return false, "Could not encode data" end
+	local ok2, err = pcall(function()
+		ensureFolder(self.dir)
+		writefile(self:_path(name), enc)
+	end)
+	if not ok2 then return false, tostring(err) end
+	return true
+end
+
+function Store:Read(name)
+	if not FS.supported() then return nil, NO_FS end
+	if not self:Exists(name) then return nil, "'" .. name .. "' does not exist" end
+	local ok, raw = pcall(readfile, self:_path(name))
+	if not ok then return nil, "Could not read the file" end
+	local ok2, data = pcall(function() return HttpService:JSONDecode(raw) end)
+	if not ok2 or type(data) ~= "table" then return nil, "The file is corrupted" end
+	return data
+end
+
+function Store:Delete(name)
+	if not FS.supported() then return false, NO_FS end
+	local ok, err = pcall(delfile, self:_path(name))
+	if not ok then return false, tostring(err) end
+	return true
+end
+
+function Store:RawAutoload()
+	if not FS.supported() then return nil end
+	local ok, exists = pcall(isfile, self.autoPath)
+	if not ok or not exists then return nil end
+	local ok2, raw = pcall(readfile, self.autoPath)
+	if not ok2 then return nil end
+	raw = tostring(raw):gsub("%s+", " ")
+	raw = raw:gsub("^%s+", "")
+	raw = raw:gsub("%s+$", "")
+	if raw == "" then return nil end
+	return raw
+end
+
+function Store:GetAutoload()
+	local name = self:RawAutoload()
+	if name and self:Exists(name) then return name end
+	return nil
+end
+
+function Store:SetAutoload(name)
+	if not FS.supported() then return false, NO_FS end
+	local ok, err = pcall(function()
+		ensureFolder(self.root)
+		writefile(self.autoPath, name)
+	end)
+	if not ok then return false, tostring(err) end
+	return true
+end
+
+function Store:ClearAutoload()
+	if not FS.supported() then return false, NO_FS end
+	pcall(function()
+		if isfile(self.autoPath) then delfile(self.autoPath) end
+	end)
+	return true
+end
+
+local function readJSON(path)
+	if not FS.supported() then return nil end
+	local ok, exists = pcall(isfile, path)
+	if not ok or not exists then return nil end
+	local ok2, raw = pcall(readfile, path)
+	if not ok2 then return nil end
+	local ok3, data = pcall(function() return HttpService:JSONDecode(raw) end)
+	if ok3 and type(data) == "table" then return data end
+	return nil
+end
+
+local function writeJSON(root, path, data)
+	if not FS.supported() then return false end
+	return pcall(function()
+		ensureFolder(root)
+		writefile(path, HttpService:JSONEncode(data))
+	end)
+end
+
+local function readText(path)
+	if not FS.supported() then return nil end
+	local ok, exists = pcall(isfile, path)
+	if not ok or not exists then return nil end
+	local ok2, raw = pcall(readfile, path)
+	if not ok2 then return nil end
+	raw = tostring(raw):gsub("^%s+", "")
+	raw = raw:gsub("%s+$", "")
+	if raw == "" then return nil end
+	return raw
+end
+
+local function writeText(root, path, text)
+	if not FS.supported() then return false end
+	return pcall(function()
+		ensureFolder(root)
+		writefile(path, tostring(text))
+	end)
+end
+
+----------------------------------------------------------------------
+-- image loading (window logo)
+-- Drawing images take raw image bytes, so rbxassetid / urls are downloaded
+-- first. Local files (readfile) work too.
+----------------------------------------------------------------------
+
+local imageCache = {}
+
+local function httpGet(url)
+	local ok, res = pcall(function() return game:HttpGet(url) end)
+	if ok and type(res) == "string" and #res > 0 then return res end
+	local req = (syn and syn.request) or request or http_request or (http and http.request)
+	if req then
+		local ok2, r = pcall(req, { Url = url, Method = "GET" })
+		if ok2 and type(r) == "table" and type(r.Body) == "string" and #r.Body > 0 then
+			return r.Body
+		end
+	end
+	return nil
+end
+
+local function loadImageBytes(src)
+	src = tostring(src)
+	if imageCache[src] then return imageCache[src] end
+	local bytes
+	local id = src:match("^rbxassetid://(%d+)") or src:match("[?&]id=(%d+)") or src:match("^(%d+)$")
+	if id and not src:match("^https?://[^?]*%.%a+$") then
+		bytes = httpGet("https://assetdelivery.roblox.com/v1/asset/?id=" .. id)
+		-- decal ids return a small xml pointing at the real image id
+		if bytes and bytes:find("<roblox", 1, true) then
+			local inner = bytes:match("<url>[^<]-id=(%d+)</url>")
+			bytes = inner and httpGet("https://assetdelivery.roblox.com/v1/asset/?id=" .. inner) or nil
+		end
+	elseif src:match("^https?://") then
+		bytes = httpGet(src)
+	elseif FS.supported() then
+		local ok, exists = pcall(isfile, src)
+		if ok and exists then
+			local ok2, raw = pcall(readfile, src)
+			if ok2 then bytes = raw end
+		end
+	end
+	if bytes and #bytes > 0 then
+		imageCache[src] = bytes
+		return bytes
+	end
+	return nil
+end
+
+----------------------------------------------------------------------
+-- element base
+----------------------------------------------------------------------
+
+local function newElement(gb, kind, height)
+	local el = setmetatable({}, Element)
+	el.window = gb.window
+	el.section = gb
+	el.kind = kind
+	el.height = height
+	el.cw = gb.cw
+	el.objs = {}
+	el.pobjs = {}
+	el.x, el.y = 0, 0
+	el._inView = false
+	el.locked = false
+	el.lockable = true
+	return el
+end
+
+-- registers the flag and applies the optional starting lock (Locked = true)
+local function register(el, o)
+	if o and o.Flag then
+		local win = el.window
+		if win.Flags[o.Flag] then
+			warn("[Library] duplicate flag '" .. tostring(o.Flag) .. "' - the newest element wins")
+		end
+		el.Flag = o.Flag
+		win.Flags[o.Flag] = el
+	end
+	if o and o.Locked == true and el.lockable then
+		el.locked = true
+		el:_ApplyLock()
+	end
+end
+
+function Element:SetVisible(v)
+	for _, o in ipairs(self.objs) do
+		o.Visible = v
+	end
+end
+
+function Element:_Place(x, y, top, bottom, showBody)
+	self.x, self.y = x, y
+	local inView = showBody and (y >= top) and (y + self.height <= bottom)
+	self._inView = inView
+	if inView then
+		self:Layout(x, y)
+	end
+	self:SetVisible(inView)
+end
+
+function Element:_Hit(mx, my)
+	return inRect(mx, my, self.x, self.y, self.cw, self.height)
+end
+
+function Element:_Click() end
+
+function Element:_ApplyTheme()
+	if self._Render then
+		self:_Render()
+	end
+end
+
+function Element:SetTitle(t)
+	self.title = tostring(t)
+	if self._Render then
+		self:_Render()
+	elseif self.label then
+		self.label.Text = self.title
+	end
+end
+
+function Element:GetValue()
+	return self:Get()
+end
+
+-- locking -------------------------------------------------------------
+-- A locked element is dimmed and ignores the player's input (clicks, keys, typing).
+-- Scripts can still change its value with SetValue. Divider / Paragraph are not lockable.
+
+function Element:_ApplyLock()
+	local a = self.locked and LOCK_ALPHA or 1
+	for _, o in ipairs(self.objs) do
+		o.Transparency = a
+	end
+	if self._AfterLock then
+		self:_AfterLock(a)
+	end
+end
+
+function Element:SetLocked(v)
+	if not self.lockable then return self end
+	v = v and true or false
+	if self.locked == v then return self end
+	self.locked = v
+	if v then
+		local win = self.window
+		if win.popupOwner == self then win:_ClosePopup() end
+		if win.textTarget == self and self._Blur then pcall(self._Blur, self, false) end
+		if win.dragTarget == self then
+			win.dragTarget = nil
+			if self._Release then self:_Release() end
+		end
+		if win.listening == self then
+			self.listening = false
+			win.listening = nil
+			if self._Render then self:_Render() end
+		end
+		if self.armed and self._Disarm then self:_Disarm() end
+	end
+	self:_ApplyLock()
+	return self
+end
+
+function Element:SetUnlocked(v)
+	if v == nil then v = true end
+	return self:SetLocked(not v)
+end
+
+function Element:Lock() return self:SetLocked(true) end
+function Element:Unlock() return self:SetLocked(false) end
+function Element:IsLocked() return self.locked == true end
+
+function Element:Destroy()
+	local win = self.window
+	if win.popupOwner == self then win:_ClosePopup() end
+	if win.textTarget == self then win.textTarget = nil end
+	if win.dragTarget == self then win.dragTarget = nil end
+	if win.listening == self then win.listening = nil end
+	if self.Flag and win.Flags[self.Flag] == self then win.Flags[self.Flag] = nil end
+	win.tickers[self] = nil
+	for i, k in ipairs(win.keybinds) do
+		if k == self then table.remove(win.keybinds, i) break end
+	end
+	for i, e in ipairs(self.section.elements) do
+		if e == self then table.remove(self.section.elements, i) break end
+	end
+	self.destroyed = true
+	for _, o in ipairs(self.objs) do pcall(function() o:Remove() end) end
+	for _, o in ipairs(self.pobjs) do pcall(function() o:Remove() end) end
+	win:_Layout()
+end
+
+----------------------------------------------------------------------
+-- Notifications (top-right toasts, newest on top, older ones slide down)
+----------------------------------------------------------------------
+
+local NOTIF_W = 292
+local NOTIF_GAP = 10
+local NOTIF_MARGIN = 18
+local NOTIF_TOP = 46 -- clears the Roblox top bar
+local NOTIF_MAX = 6
+
+-- plain ASCII glyphs only: the drawing font has no unicode symbols
+local NOTIF_TYPES = {
+	info    = { glyph = "i" },
+	success = { glyph = "+", color = Color3.fromRGB(70, 200, 120) },
+	warning = { glyph = "!", color = Color3.fromRGB(255, 176, 56) },
+	error   = { glyph = "x", color = Color3.fromRGB(235, 70, 84) },
+}
+
+local Notifs = { list = {}, last = 0 }
+
+local function notifStop()
+	if Notifs.conn then Notifs.conn:Disconnect() Notifs.conn = nil end
+	if Notifs.inputConn then Notifs.inputConn:Disconnect() Notifs.inputConn = nil end
+end
+
+local function notifRemove(n)
+	for _, e in ipairs(n.objs) do
+		pcall(function() e.o:Remove() end)
+	end
+	n.objs = {}
+	for i, v in ipairs(Notifs.list) do
+		if v == n then table.remove(Notifs.list, i) break end
+	end
+	if #Notifs.list == 0 then
+		notifStop()
+		if #Library.Windows == 0 then releaseMeasurer() end
+	end
+end
+
+local function notifDismiss(n)
+	if n.state == "out" then return end
+	n.state, n.t = "out", 0
+end
+
+local function notifClear()
+	for i = #Notifs.list, 1, -1 do
+		local n = Notifs.list[i]
+		for _, e in ipairs(n.objs) do
+			pcall(function() e.o:Remove() end)
+		end
+		n.objs = {}
+	end
+	Notifs.list = {}
+	notifStop()
+end
+
+local function notifTick()
+	local now = os.clock()
+	local dt = math.min(now - Notifs.last, 0.1)
+	Notifs.last = now
+
+	local cam = workspace.CurrentCamera
+	local vs = cam and cam.ViewportSize or Vector2.new(1920, 1080)
+	local m = UIS:GetMouseLocation()
+	local w = NOTIF_W
+	local restX = math.floor(vs.X - w - NOTIF_MARGIN)
+	local travel = w + NOTIF_MARGIN + 10
+
+	-- stack targets (whole pixels): newest sits at the top, older ones are pushed down
+	local nextY = NOTIF_TOP
+	for i = #Notifs.list, 1, -1 do
+		local n = Notifs.list[i]
+		n.ty = nextY
+		nextY = nextY + n.h + NOTIF_GAP
+	end
+
+	local limit = nil -- bottom edge of the card above plus the gap: a card may never go past it
+	for i = #Notifs.list, 1, -1 do
+		local n = Notifs.list[i]
+		local h = n.h
+		local T = n.T
+
+		if n.y == nil then
+			n.y = n.ty
+		else
+			local d = n.ty - n.y
+			if math.abs(d) < 0.5 then
+				n.y = n.ty -- snap: no sub-pixel tail
+			else
+				n.y = n.y + d * (1 - math.exp(-14 * dt))
+			end
+		end
+
+		local cy = math.floor(n.y + 0.5)
+		if limit and cy < limit then
+			cy = limit -- never overlap the card above
+			n.y = cy
+		end
+		limit = cy + h + NOTIF_GAP
+
+		local hovered = n.state ~= "out" and inRect(m.X, m.Y, restX, cy, w, h)
+		local slide, alpha = 0, 1
+
+		if n.state == "in" then
+			n.t = math.min(1, n.t + dt / 0.4)
+			local e = 1 - (1 - n.t) ^ 3
+			slide = (1 - e) * travel
+			alpha = math.min(1, e * 1.6)
+			if n.t >= 1 then n.state = "show" end
+		elseif n.state == "show" then
+			if n.dur and not hovered then n.elapsed = n.elapsed + dt end
+			if n.dur and n.elapsed >= n.dur then n.state, n.t = "out", 0 end
+		end
+		if n.state == "out" then
+			n.t = math.min(1, n.t + dt / 0.3)
+			slide = (n.t ^ 2) * travel
+			alpha = 1 - n.t
+		end
+
+		-- whole pixels only, so every edge of the card stays perfectly aligned
+		local cx = math.floor(restX + slide + 0.5)
+		n.hx, n.hy = restX, cy
+		local vis = alpha > 0.01
+
+		for _, e in ipairs(n.objs) do
+			local o = e.o
+			o.Visible = vis and (not e.bar or n.dur ~= nil)
+			o.Position = Vector2.new(cx + e.ox, cy + e.oy)
+			o.Transparency = e.base * alpha
+		end
+
+		if n.fill then
+			local frac = math.max(0, 1 - n.elapsed / n.dur)
+			local fw = math.floor((w - 2) * frac + 0.5)
+			n.fill.Size = Vector2.new(fw, 2)
+			n.fill.Visible = vis and fw > 0
+		end
+
+		if hovered ~= n.hov then
+			n.hov = hovered
+			n.border.Color = hovered and n.color or T.border
+			n.closeTxt.Color = hovered and T.text or T.textDim
+		end
+
+		if n.state == "out" and n.t >= 1 then
+			notifRemove(n)
+		end
+	end
+end
+
+-- opts: Title, Text, Type ("info" | "success" | "warning" | "error"), Duration (seconds, 0 = stays until clicked)
+function Library:Notify(o)
+	if type(o) ~= "table" then o = { Text = tostring(o) } end
+	local T = o.Theme or Library.Theme
+	local kind = NOTIF_TYPES[string.lower(tostring(o.Type or "info"))] or NOTIF_TYPES.info
+	local color = kind.color or T.accent
+
+	local titleW = NOTIF_W - 44 - 28
+	local msgW = NOTIF_W - 44 - 14
+	local title = fitText(tostring(o.Title or "Notification"), 13, titleW)
+	local msg = o.Text or o.Content or o.Message
+	local lines = {}
+	if msg ~= nil and tostring(msg) ~= "" then
+		lines = wrapText(tostring(msg), 12, msgW)
+		if #lines > 5 then
+			local last = lines[5]
+			while #last > 1 and textW(last .. "...", 12) > msgW do
+				last = last:sub(1, -2)
+			end
+			lines = { lines[1], lines[2], lines[3], lines[4], last .. "..." }
+		end
+	end
+
+	local dur = o.Duration
+	if dur == nil then dur = 4 end
+	if type(dur) ~= "number" or dur <= 0 or dur == math.huge then dur = nil end
+
+	local w = NOTIF_W
+	local h = 14 + 16 + (#lines > 0 and (2 + #lines * 14) or 0) + 14
+	if h < 50 then h = 50 end
+
+	local n = { objs = {}, h = h, state = "in", t = 0, elapsed = 0, dur = dur, T = T, color = color }
+	local Z = 300
+
+	-- ox/oy are offsets from the card's top-left; base is the opacity at full alpha
+	local function add(class, props, ox, oy, base, bar)
+		local d = Drawing.new(class)
+		for k, v in pairs(props) do d[k] = v end
+		d.Visible = false
+		table.insert(n.objs, { o = d, ox = ox, oy = oy, base = base or 1, bar = bar == true })
+		return d
+	end
+
+	local black = Color3.fromRGB(0, 0, 0)
+	-- soft drop shadow
+	add("Square", { Filled = true, Color = black, Size = Vector2.new(w + 8, h + 9), ZIndex = Z }, -4, -2, 0.08)
+	add("Square", { Filled = true, Color = black, Size = Vector2.new(w + 4, h + 5), ZIndex = Z }, -2, -1, 0.14)
+	-- card
+	add("Square", { Filled = true, Color = T.header, Size = Vector2.new(w, h), ZIndex = Z + 1 }, 0, 0, 1)
+	n.border = add("Square", { Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(w, h), ZIndex = Z + 5 }, 0, 0, 1)
+	-- accent stripe across the top, inside the border
+	add("Square", { Filled = true, Color = color, Size = Vector2.new(w - 2, 2), ZIndex = Z + 2 }, 1, 1, 1)
+	-- square icon badge
+	add("Square", { Filled = true, Color = color, Size = Vector2.new(22, 22), ZIndex = Z + 2 }, 11, 13, 0.2)
+	add("Square", { Filled = false, Color = color, Thickness = 1, Size = Vector2.new(22, 22), ZIndex = Z + 3 }, 11, 13, 0.9)
+	add("Text", { Text = kind.glyph, Color = color, Size = 13, Font = FONT, Center = true, ZIndex = Z + 4 }, 22, 17, 1)
+	-- text
+	add("Text", { Text = title, Color = T.text, Size = 13, Font = FONT, ZIndex = Z + 4 }, 44, 13, 1)
+	for i, line in ipairs(lines) do
+		add("Text", { Text = line, Color = T.textDim, Size = 12, Font = FONT, ZIndex = Z + 4 }, 44, 31 + (i - 1) * 14, 1)
+	end
+	n.closeTxt = add("Text", { Text = "x", Color = T.textDim, Size = 13, Font = FONT, ZIndex = Z + 4 }, w - 18, 12, 1)
+	-- time remaining bar along the bottom edge
+	if dur then
+		add("Square", { Filled = true, Color = T.field, Size = Vector2.new(w - 2, 2), ZIndex = Z + 2 }, 1, h - 3, 1, true)
+		n.fill = add("Square", { Filled = true, Color = color, Size = Vector2.new(w - 2, 2), ZIndex = Z + 3 }, 1, h - 3, 1, true)
+	end
+
+	table.insert(Notifs.list, n)
+
+	local active = 0
+	for _, v in ipairs(Notifs.list) do
+		if v.state ~= "out" then active = active + 1 end
+	end
+	if active > NOTIF_MAX then
+		for _, v in ipairs(Notifs.list) do
+			if v ~= n and v.state ~= "out" then
+				notifDismiss(v)
+				break
+			end
+		end
+	end
+
+	if not Notifs.conn then
+		Notifs.last = os.clock()
+		Notifs.conn = RS.RenderStepped:Connect(notifTick)
+		Notifs.inputConn = UIS.InputBegan:Connect(function(input)
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+			local m = UIS:GetMouseLocation()
+			for i = #Notifs.list, 1, -1 do
+				local v = Notifs.list[i]
+				if v.state ~= "out" and v.hx and inRect(m.X, m.Y, v.hx, v.hy, NOTIF_W, v.h) then
+					notifDismiss(v)
+					break
+				end
+			end
+		end)
+	end
+
+	return { Dismiss = function() notifDismiss(n) end }
+end
+
+function Window:Notify(o)
+	if type(o) ~= "table" then o = { Text = tostring(o) } end
+	local c = copyTable(o)
+	c.Theme = self.Theme
+	return Library:Notify(c)
+end
+
+----------------------------------------------------------------------
+-- Window
+-- Layout: accent edge on the far left, navigation sidebar (logo, tabs, menu key),
+-- slim top bar (breadcrumb + window buttons), scrolling content area.
+----------------------------------------------------------------------
+
+-- opts: Title, Subtitle, Icon (letter), Image ("rbxassetid://123", url or file path), Size, Position, Theme, ToggleKey
+function Library:CreateWindow(opts)
+	opts = opts or {}
+	local size = opts.Size or Vector2.new(600, 440)
+	local pos = opts.Position or Vector2.new(200, 150)
+
+	local self = setmetatable({}, Window)
+	self.Theme = copyTable(Library.Theme)
+	for k, v in pairs(opts.Theme or {}) do self.Theme[k] = v end
+	if opts.Theme and opts.Theme.accent and not opts.Theme.toggle_on then
+		self.Theme.toggle_on = opts.Theme.accent
+	end
+	self.themeName = (opts.Theme == nil) and "Dark" or nil
+
+	self.x, self.y = round(pos.X), round(pos.Y)
+	self.w, self.h = size.X, size.Y
+	self.title = opts.Title or "Window"
+	self.subtitle = opts.Subtitle
+	self.icon = opts.Icon
+	self.toggleKey = opts.ToggleKey or Enum.KeyCode.RightShift
+	self.onClose = opts.OnClose
+	self.minimized = opts.Minimized == true
+	self.visible = true
+	self.tabs = {}
+	self.Flags = {}
+	self.all = {}
+	self.themed = {}
+	self.chrome = {}  -- always shown with the window
+	self.side = {}    -- sidebar bottom widgets (hidden while minimized)
+	self.keybinds = {}
+	self.tickers = {}
+	self.conns = {}
+	self.rc = {}      -- header / sidebar button rects (set in _Layout)
+	self.btn = {}     -- header buttons
+	self.hover = {}
+	self._tk = {}     -- open/close key press state
+	self._held = {}   -- keys held when a bind capture started
+
+	local function C(class, props)
+		return self:_D(class, props, self.chrome)
+	end
+	local function S(class, props)
+		return self:_D(class, props, self.side)
+	end
+
+	-- window frame
+	self.bg = C("Square", { Visible = true, Filled = true, Color = "bg", Size = Vector2.new(self.w, self.h), Position = V0, ZIndex = 1 })
+
+	-- sidebar
+	self.sbBg = C("Square", { Visible = true, Filled = true, Color = "header", Size = Vector2.new(SIDEBAR_W - 3, self.h - 2), Position = V0, ZIndex = 2 })
+	self.sbLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(1, self.h - 2), Position = V0, ZIndex = 3 })
+	self.sbHeadLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(SIDEBAR_W - 3, 1), Position = V0, ZIndex = 3 })
+	-- top bar underline
+	self.tbLine = C("Square", { Visible = true, Filled = true, Color = "border", Size = Vector2.new(self.w - SIDEBAR_W - 2, 1), Position = V0, ZIndex = 3 })
+	-- accent edge down the whole left side of the window
+	self.accent = C("Square", { Visible = true, Filled = true, Color = "accent", Size = Vector2.new(2, self.h - 2), Position = V0, ZIndex = 5 })
+
+	-- logo badge (round monogram, replaced by the image when one is loaded) + title / subtitle
+	self.logo = C("Circle", { Visible = true, Filled = true, Color = "accent", Radius = 11, NumSides = 32, Thickness = 1, Position = V0, ZIndex = 4 })
+	self.logoTxt = C("Text", { Visible = true, Text = "", Color = "bg", Size = 14, Font = FONT, Center = true, Position = V0, ZIndex = 5 })
+	self.titleTxt = C("Text", { Visible = true, Text = self.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 4 })
+	self.subTxt = C("Text", { Visible = false, Text = "", Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 4 })
+
+	-- top bar breadcrumb (name of the active tab)
+	self.crumbDot = C("Square", { Visible = true, Filled = true, Color = "accent", Size = Vector2.new(6, 6), Position = V0, ZIndex = 4 })
+	self.crumbTxt = C("Text", { Visible = true, Text = "", Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 4 })
+
+	-- header buttons: flat, only show a background on hover (ASCII glyphs only)
+	local function mkBtn(name, glyph)
+		local b = {}
+		b.box = C("Square", { Visible = true, Filled = true, Color = "bg", Size = Vector2.new(22, 22), Position = V0, ZIndex = 4 })
+		b.txt = C("Text", { Visible = true, Text = glyph, Color = "textDim", Size = 14, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
+		self.btn[name] = b
+		return b
+	end
+	self.closeTxt = mkBtn("close", "x").txt
+	self.minTxt = mkBtn("min", self.minimized and "+" or "-").txt
+
+	-- menu key box lives at the bottom of the sidebar
+	self.keyLbl = S("Text", { Visible = true, Text = "MENU KEY", Color = "textDim", Size = 10, Font = FONT, Position = V0, ZIndex = 4 })
+	self.keyBox = S("Square", { Visible = true, Filled = true, Color = "field", Size = Vector2.new(SIDEBAR_W - 24, 20), Position = V0, ZIndex = 4 })
+	self.keyBdr = S("Square", { Visible = true, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(SIDEBAR_W - 24, 20), Position = V0, ZIndex = 5 })
+	self.keyTxt = S("Text", { Visible = true, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 6 })
+
+	-- outline is drawn last / on top so nothing can cover its edges
+	self.bgBorder = C("Square", { Visible = true, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(self.w, self.h), Position = V0, ZIndex = 50 })
+
+	self.scrollbar = self:_D("Square", { Visible = false, Filled = true, Color = "accentDim", Size = Vector2.new(2, 10), Position = V0, ZIndex = 4 })
+
+	self.menuKey = {
+		_Capture = function(_, input)
+			local ut = input.UserInputType
+			local newKey, cancel = self.toggleKey, false
+			if ut == Enum.UserInputType.Keyboard then
+				local kc = input.KeyCode
+				if kc == Enum.KeyCode.Escape then
+					cancel = true
+				elseif kc == Enum.KeyCode.Backspace or kc == Enum.KeyCode.Delete then
+					newKey = nil
+				else
+					newKey = kc
+				end
+			elseif ut == Enum.UserInputType.MouseButton1 then
+				cancel = true
+			else
+				newKey = ut
+			end
+			self.listeningMenuKey = false
+			self.listening = nil
+			if not cancel then
+				self:SetToggleKey(newKey)
+			else
+				self:_RenderMenuKey()
+			end
+		end,
+	}
+
+	self:_RefitTitle()
+	self:_RenderMenuKey()
+
+	table.insert(self.conns, UIS.InputBegan:Connect(function(input, gpe) self:_InputBegan(input, gpe) end))
+	table.insert(self.conns, UIS.InputEnded:Connect(function(input) self:_InputEnded(input) end))
+	table.insert(self.conns, UIS.InputChanged:Connect(function(input) self:_InputChanged(input) end))
+	table.insert(self.conns, RS.RenderStepped:Connect(function() self:_Tick() end))
+
+	self:_CreateBlocker()
+
+	table.insert(Library.Windows, self)
+	self:_Layout()
+
+	local img = opts.Image
+	if img == nil then
+		local ic = tostring(opts.Icon or "")
+		if ic:match("^rbxassetid://") or ic:match("^https?://") then img = ic end
+	end
+	if img then self:SetImage(img) end
+
+	return self
+end
+
+function Library:Unload()
+	for i = #Library.Windows, 1, -1 do
+		Library.Windows[i]:Destroy()
+	end
+	notifClear()
+	releaseMeasurer()
+end
+
+function Window:_D(class, props, store)
+	local role
+	if type(props.Color) == "string" then
+		role = props.Color
+		props.Color = self.Theme[role]
+	end
+	local o = Drawing.new(class)
+	for k, v in pairs(props) do
+		o[k] = v
+	end
+	table.insert(self.all, o)
+	if store then
+		table.insert(store, o)
+	end
+	if role then
+		table.insert(self.themed, { o, role })
+	end
+	return o
+end
+
+----------------------------------------------------------------------
+-- input blocking
+-- Drawing objects are not real GUI, so clicks and scrolling would also reach the game.
+-- Two things stop that while the mouse is over the window (or an open popup):
+--   1. invisible, Active GuiButtons covering the window / popup, so clicks never reach
+--      game GUI buttons behind it
+--   2. a high priority ContextAction that sinks the mouse buttons and the wheel, so the
+--      world / camera (clicks, zoom) never sees them
+----------------------------------------------------------------------
+
+local function guiParent()
+	local parent
+	if type(gethui) == "function" then
+		local ok, h = pcall(gethui)
+		if ok and h then parent = h end
+	end
+	if not parent then
+		local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+		if ok and cg then
+			-- make sure we are really allowed to parent there
+			local ok2 = pcall(function()
+				local t = Instance.new("Folder")
+				t.Parent = cg
+				t:Destroy()
+			end)
+			if ok2 then parent = cg end
+		end
+	end
+	if not parent then
+		local lp = Players.LocalPlayer
+		parent = lp and lp:FindFirstChildOfClass("PlayerGui")
+	end
+	return parent
+end
+
+function Window:_CreateBlocker()
+	local ok, gui = pcall(function()
+		local g = Instance.new("ScreenGui")
+		g.Name = "LibraryInputBlocker"
+		g.ResetOnSpawn = false
+		g.IgnoreGuiInset = true
+		g.DisplayOrder = 2147483647
+		g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		if syn and syn.protect_gui then pcall(syn.protect_gui, g) end
+		g.Parent = guiParent()
+		return g
+	end)
+	if ok and gui then
+		self.blockGui = gui
+		local function mk()
+			local b = Instance.new("TextButton")
+			b.Text = ""
+			b.AutoButtonColor = false
+			b.BackgroundTransparency = 1
+			b.BorderSizePixel = 0
+			b.Active = true
+			b.Selectable = false
+			b.Visible = false
+			b.ZIndex = 1
+			b.Parent = gui
+			return { inst = b, key = "off" }
+		end
+		self.blkMain = mk()
+		self.blkPop = mk()
+	end
+
+	local name = "LibraryMouseSink_" .. tostring(self)
+	self._mouseSinkName = name
+	pcall(function()
+		CAS:BindActionAtPriority(name, function()
+			if self:_MouseOverUI() then
+				return Enum.ContextActionResult.Sink
+			end
+			return Enum.ContextActionResult.Pass
+		end, false, 10000,
+			Enum.UserInputType.MouseButton1, Enum.UserInputType.MouseButton2,
+			Enum.UserInputType.MouseButton3, Enum.UserInputType.MouseWheel)
+	end)
+end
+
+function Window:_CurHeight()
+	return self.minimized and (HEADER_H + 1) or self.h
+end
+
+function Window:_MouseOverUI()
+	if self._destroyed or not self.visible then return false end
+	local m = UIS:GetMouseLocation()
+	if inRect(m.X, m.Y, self.x, self.y, self.w, self:_CurHeight()) then
+		return true
+	end
+	local po = self.popupOwner
+	if po and po._PopupRect then
+		local x, y, w, h = po:_PopupRect()
+		if x and inRect(m.X, m.Y, x, y, w, h) then
+			return true
+		end
+	end
+	return false
+end
+
+local function setBlock(rec, vis, x, y, w, h)
+	if not rec then return end
+	local k = "off"
+	if vis then
+		x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
+		k = x .. "," .. y .. "," .. w .. "," .. h
+	end
+	if rec.key == k then return end
+	rec.key = k
+	local b = rec.inst
+	if vis then
+		b.Position = UDim2.fromOffset(x, y)
+		b.Size = UDim2.fromOffset(w, h)
+		b.Visible = true
+	else
+		b.Visible = false
+	end
+end
+
+function Window:_UpdateBlocker()
+	if not self.blockGui then return end
+	local vis = self.visible and not self._destroyed
+	setBlock(self.blkMain, vis, self.x, self.y, self.w, self:_CurHeight())
+	local po = self.popupOwner
+	if vis and po and po._PopupRect then
+		local x, y, w, h = po:_PopupRect()
+		if x then
+			setBlock(self.blkPop, true, x, y, w, h)
+			return
+		end
+	end
+	setBlock(self.blkPop, false)
+end
+
+function Window:Destroy()
+	self._destroyed = true
+	pcall(function() CAS:UnbindAction("LibrarySink_" .. tostring(self)) end)
+	pcall(function() CAS:UnbindAction(self._mouseSinkName or "") end)
+	if self.blockGui then
+		pcall(function() self.blockGui:Destroy() end)
+		self.blockGui = nil
+	end
+	for _, c in ipairs(self.conns) do pcall(function() c:Disconnect() end) end
+	for _, o in ipairs(self.all) do pcall(function() o:Remove() end) end
+	for i, w in ipairs(Library.Windows) do
+		if w == self then table.remove(Library.Windows, i) break end
+	end
+	if #Library.Windows == 0 and #Notifs.list == 0 then
+		releaseMeasurer()
+	end
+end
+
+function Window:Close()
+	local cb = self.onClose
+	self:Destroy()
+	fire(cb)
+end
+
+-- flags / locking helpers -------------------------------------------
+
+function Window:GetElement(flag)
+	return self.Flags[flag]
+end
+
+-- window:SetLocked("target", true) / window:SetLocked("target", false)
+function Window:SetLocked(flag, v)
+	local el = self.Flags[flag]
+	if not el then
+		warn("[Library] SetLocked: no element with flag '" .. tostring(flag) .. "'")
+		return false
+	end
+	el:SetLocked(v)
+	return true
+end
+
+-- text measuring (shared implementation above) -------------------------
+
+function Window:_TextW(str, size) return textW(str, size) end
+function Window:_Fit(str, size, maxW) return fitText(str, size, maxW) end
+function Window:_FitTail(str, size, maxW) return fitTail(str, size, maxW) end
+function Window:_Wrap(text, size, maxW) return wrapText(text, size, maxW) end
+
+-- logo image ---------------------------------------------------------
+
+-- src: "rbxassetid://123", a number id, an http(s) url or a local file path. nil/"" goes back to the letter.
+function Window:SetImage(src)
+	self.image = src
+	self.logoReady = false
+	if src == nil or src == "" then
+		self:_UpdateLogo()
+		return
+	end
+	task.spawn(function()
+		local bytes = loadImageBytes(src)
+		if self._destroyed or self.image ~= src or not bytes then return end
+		if not self.logoImg then
+			local ok, d = pcall(function() return Drawing.new("Image") end)
+			if not ok or not d then return end
+			d.Visible = false
+			d.Size = Vector2.new(22, 22)
+			d.Transparency = 1
+			d.ZIndex = 6
+			pcall(function() d.Rounding = 11 end)
+			table.insert(self.all, d)
+			self.logoImg = d
+		end
+		local ok = pcall(function() self.logoImg.Data = bytes end)
+		if not ok then return end
+		self.logoReady = true
+		self:_UpdateLogo()
+	end)
+end
+
+function Window:_UpdateLogo()
+	if self._destroyed then return end
+	local useImg = self.logoImg ~= nil and self.logoReady == true
+	self.logo.Visible = self.visible and not useImg
+	self.logoTxt.Visible = self.visible and not useImg
+	if self.logoImg then
+		self.logoImg.Visible = self.visible and useImg
+		self.logoImg.Position = Vector2.new(self.x + 12, self.y + 11)
+	end
+end
+
+-- header buttons -----------------------------------------------------
+
+function Window:_PaintButton(name)
+	local b, T = self.btn[name], self.Theme
+	if not b then return end
+	local on = self.hover[name]
+	if name == "close" then
+		b.box.Color = on and Color3.fromRGB(196, 54, 66) or T.bg
+		b.txt.Color = on and Color3.fromRGB(255, 255, 255) or T.textDim
+	else
+		b.box.Color = on and T.field or T.bg
+		b.txt.Color = on and T.accent or T.textDim
+	end
+end
+
+function Window:_PaintButtons()
+	self:_PaintButton("close")
+	self:_PaintButton("min")
+	self:_RenderMenuKey()
+end
+
+function Window:_RefitTitle()
+	local avail = SIDEBAR_W - 42 - 6
+	self.titleTxt.Text = fitText(self.title, 13, avail)
+	self.subTxt.Text = fitText(self.subtitle or "", 11, avail)
+	local ic = tostring(self.icon or "")
+	if ic == "" or ic:match("^rbxassetid://") or ic:match("^https?://") then
+		ic = tostring(self.title)
+	end
+	self.logoTxt.Text = ic:sub(1, 1):upper()
+end
+
+-- returns true when there is a breadcrumb to show
+function Window:_UpdateCrumb()
+	local t = self.activeTab
+	local s = (t and not t.implicit) and t.name or ""
+	local avail = self.w - SIDEBAR_W - 26 - 70
+	self.crumbTxt.Text = fitText(s, 13, avail)
+	return s ~= ""
+end
+
+function Window:_TabAt(mx, my)
+	local top = self.y + HEADER_H + 10
+	if mx < self.x or mx > self.x + SIDEBAR_W then return nil end
+	local rel = my - top
+	if rel < 0 then return nil end
+	local i = math.floor(rel / TAB_STEP) + 1
+	if i < 1 or i > #self.tabs then return nil end
+	if rel - (i - 1) * TAB_STEP > TAB_H then return nil end
+	return self.tabs[i]
+end
+
+function Window:_UpdateHover()
+	local rc = self.rc
+	if not rc.close then return end
+	local m = UIS:GetMouseLocation()
+	for _, name in ipairs({ "close", "min", "key" }) do
+		local r = rc[name]
+		local on = (self.visible and r ~= nil and inRect(m.X, m.Y, r[1], r[2], r[3], r[4])) or false
+		if on ~= (self.hover[name] or false) then
+			self.hover[name] = on
+			if name == "key" then
+				self:_RenderMenuKey()
+			else
+				self:_PaintButton(name)
+			end
+		end
+	end
+	local ht
+	if self.visible and not self.minimized and self:_BarVisible() then
+		ht = self:_TabAt(m.X, m.Y)
+	end
+	if ht ~= self.hoverTab then
+		self.hoverTab = ht
+		self:_UpdateTabColors()
+	end
+end
+
+-- tabs ---------------------------------------------------------------
+
+function Window:_BarVisible()
+	local n = #self.tabs
+	return n > 1 or (n == 1 and not self.tabs[1].implicit)
+end
+
+function Window:_RefitTabs()
+	for _, tab in ipairs(self.tabs) do
+		tab.txt.Text = self:_Fit(tab.name, 12, SIDEBAR_W - 38)
+	end
+end
+
+function Window:AddTab(name)
+	local tab = setmetatable({ window = self, name = tostring(name), groupboxes = {}, scroll = 0 }, Tab)
+	tab.bgSq = self:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(SIDEBAR_W - 16, TAB_H), Position = V0, ZIndex = 4 })
+	tab.bar = self:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(3, TAB_H), Position = V0, ZIndex = 6 })
+	tab.txt = self:_D("Text", { Visible = false, Text = tab.name, Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 7 })
+	table.insert(self.tabs, tab)
+	if not self.activeTab then
+		self.activeTab = tab
+	end
+	self:_RefitTabs()
+	self:_Layout()
+	return tab
+end
+
+function Window:_Implicit()
+	if not self.implicitTab then
+		self.implicitTab = self:AddTab("Main")
+		self.implicitTab.implicit = true
+	end
+	return self.implicitTab
+end
+
+function Window:GetTab(name)
+	for _, t in ipairs(self.tabs) do
+		if t.name == name then return t end
+	end
+	return nil
+end
+
+function Window:_HideTab(tab)
+	for _, gb in ipairs(tab.groupboxes) do
+		gb:_SetFrameVisible(false)
+		for _, el in ipairs(gb.elements) do
+			el._inView = false
+			el:SetVisible(false)
+		end
+	end
+end
+
+function Window:SelectTab(t)
+	if type(t) == "string" then t = self:GetTab(t) end
+	if not t or t == self.activeTab then return end
+	self:_ClosePopup()
+	self:_BlurText()
+	self.dragTarget = nil
+	if self.activeTab then self:_HideTab(self.activeTab) end
+	self.activeTab = t
+	self:_Layout()
+end
+
+function Window:_UpdateTabColors()
+	local T = self.Theme
+	for _, tab in ipairs(self.tabs) do
+		if tab == self.activeTab then
+			tab.txt.Color = T.text
+		elseif tab == self.hoverTab then
+			tab.txt.Color = T.textDim:Lerp(T.text, 0.6)
+		else
+			tab.txt.Color = T.textDim
+		end
+	end
+end
+
+-- vertical tab list inside the sidebar
+function Window:_LayoutTabs(show)
+	local x = self.x
+	local top = self.y + HEADER_H + 10
+	for i, tab in ipairs(self.tabs) do
+		local active = tab == self.activeTab
+		local iy = top + (i - 1) * TAB_STEP
+		tab.txt.Visible = show
+		tab.bgSq.Visible = show and active
+		tab.bar.Visible = show and active
+		if show then
+			tab.txt.Position = Vector2.new(x + 22, iy + 7)
+			tab.bgSq.Position = Vector2.new(x + 8, iy)
+			tab.bgSq.Size = Vector2.new(SIDEBAR_W - 16, TAB_H)
+			tab.bar.Position = Vector2.new(x + 8, iy)
+			tab.bar.Size = Vector2.new(3, TAB_H)
+		end
+	end
+	self:_UpdateTabColors()
+end
+
+-- layout -------------------------------------------------------------
+
+function Window:_ColWidths()
+	local inner = self.w - SIDEBAR_W - 1
+	return math.floor((inner - 2 * MARGIN - GAP) / 2), inner - 2 * MARGIN
+end
+
+-- lays the groupboxes of a tab into two columns; returns rects + total content height
+function Window:_Arrange(tab)
+	local colW, fullW = self:_ColWidths()
+	local l, r = 0, 0
+	local out = {}
+	for _, gb in ipairs(tab.groupboxes) do
+		if gb:_HasContent() then
+			local h = gb:_Height()
+			local rect = { gb = gb }
+			if gb.side == "Left" then
+				rect.x, rect.y, rect.w = MARGIN, l, colW
+				l = l + h + GAP
+			elseif gb.side == "Right" then
+				rect.x, rect.y, rect.w = MARGIN + colW + GAP, r, colW
+				r = r + h + GAP
+			else
+				local y = math.max(l, r)
+				rect.x, rect.y, rect.w = MARGIN, y, fullW
+				l = y + h + GAP
+				r = l
+			end
+			table.insert(out, rect)
+		end
+	end
+	local total = math.max(l, r)
+	if total > 0 then total = total - GAP end
+	return out, total + 2 * MARGIN
+end
+
+function Window:_Layout()
+	if self._destroyed then return end
+	-- the window always sits on whole pixels
+	self.x, self.y = round(self.x), round(self.y)
+	local x, y, w = self.x, self.y, self.w
+	local curH = self:_CurHeight()
+
+	self.bg.Size = Vector2.new(w, curH)
+	self.bg.Position = Vector2.new(x, y)
+	self.bgBorder.Size = Vector2.new(w, curH)
+	self.bgBorder.Position = Vector2.new(x, y)
+
+	-- accent edge + sidebar
+	self.accent.Position = Vector2.new(x + 1, y + 1)
+	self.accent.Size = Vector2.new(2, curH - 2)
+	self.sbBg.Position = Vector2.new(x + 3, y + 1)
+	self.sbBg.Size = Vector2.new(SIDEBAR_W - 3, curH - 2)
+	self.sbLine.Position = Vector2.new(x + SIDEBAR_W, y + 1)
+	self.sbLine.Size = Vector2.new(1, curH - 2)
+	self.sbHeadLine.Position = Vector2.new(x + 3, y + HEADER_H)
+	self.sbHeadLine.Size = Vector2.new(SIDEBAR_W - 3, 1)
+	self.tbLine.Position = Vector2.new(x + SIDEBAR_W + 1, y + HEADER_H)
+	self.tbLine.Size = Vector2.new(w - SIDEBAR_W - 2, 1)
+
+	-- logo + titles (sidebar header)
+	self.logo.Position = Vector2.new(x + 23, y + 22)
+	self.logoTxt.Position = Vector2.new(x + 23, y + 15)
+	local hasSub = self.subtitle ~= nil and self.subtitle ~= ""
+	self.titleTxt.Position = Vector2.new(x + 42, y + (hasSub and 8 or 15))
+	self.subTxt.Position = Vector2.new(x + 42, y + 24)
+
+	-- top bar: breadcrumb + buttons
+	local hasCrumb = self:_UpdateCrumb()
+	self.crumbDot.Position = Vector2.new(x + SIDEBAR_W + 14, y + 19)
+	self.crumbTxt.Position = Vector2.new(x + SIDEBAR_W + 26, y + 15)
+
+	local rc = self.rc
+	rc.close = { x + w - 32, y + 11, 22, 22 }
+	rc.min = { x + w - 58, y + 11, 22, 22 }
+	rc.key = (not self.minimized) and { x + 12, y + curH - 30, SIDEBAR_W - 24, 20 } or nil
+	for _, name in ipairs({ "close", "min" }) do
+		local b, r = self.btn[name], rc[name]
+		b.box.Position = Vector2.new(r[1], r[2])
+		b.txt.Position = Vector2.new(r[1] + 11, r[2] + 4)
+	end
+	if rc.key then
+		self.keyLbl.Position = Vector2.new(rc.key[1], rc.key[2] - 14)
+		self.keyBox.Position = Vector2.new(rc.key[1], rc.key[2])
+		self.keyBdr.Position = Vector2.new(rc.key[1], rc.key[2])
+		self.keyTxt.Position = Vector2.new(rc.key[1] + rc.key[3] / 2, rc.key[2] + 4)
+	end
+
+	for _, o in ipairs(self.chrome) do
+		o.Visible = self.visible
+	end
+	for _, o in ipairs(self.side) do
+		o.Visible = self.visible and not self.minimized
+	end
+	self.subTxt.Visible = self.visible and hasSub
+	self.crumbTxt.Visible = self.visible and hasCrumb
+	self.crumbDot.Visible = self.visible and hasCrumb
+	self:_UpdateLogo()
+
+	local showBody = self.visible and not self.minimized
+	local barVisible = self:_BarVisible()
+	self:_LayoutTabs(showBody and barVisible)
+
+	local left = x + SIDEBAR_W + 1
+	local top = y + HEADER_H + 1
+	local bottom = y + self.h - 1
+	local tab = self.activeTab
+	local sb = self.scrollbar
+	if not tab then
+		sb.Visible = false
+		return
+	end
+
+	local rects, total = self:_Arrange(tab)
+	local view = bottom - top
+	local maxScroll = math.max(0, total - view)
+	tab.scroll = round(clamp(tab.scroll, 0, maxScroll))
+
+	for _, r in ipairs(rects) do
+		r.gb:_Place(left + r.x, top + MARGIN + r.y - tab.scroll, top, bottom, showBody)
+	end
+	for _, gb in ipairs(tab.groupboxes) do
+		if not gb:_HasContent() then gb:_SetFrameVisible(false) end
+	end
+
+	-- scrollbar: thin bar in the right gutter of the content area, whole pixels only
+	if showBody and maxScroll > 0 then
+		local trackTop, trackLen = top + 2, view - 4
+		local th = math.min(trackLen, math.max(16, round(trackLen * view / total)))
+		sb.Size = Vector2.new(2, th)
+		sb.Position = Vector2.new(x + w - 6, trackTop + round((trackLen - th) * (tab.scroll / maxScroll)))
+		sb.Visible = true
+	else
+		sb.Visible = false
+	end
+
+	local po = self.popupOwner
+	if po and (not po._inView) then
+		self:_ClosePopup()
+	end
+end
+
+-- theme --------------------------------------------------------------
+
+function Window:_ApplyTheme(changed)
+	for _, e in ipairs(self.themed) do
+		if changed[e[2]] then
+			pcall(setColor, e[1], self.Theme[e[2]])
+		end
+	end
+	for _, tab in ipairs(self.tabs) do
+		for _, gb in ipairs(tab.groupboxes) do
+			for _, el in ipairs(gb.elements) do
+				pcall(el._ApplyTheme, el)
+			end
+		end
+	end
+	self:_PaintButtons()
+	self:_UpdateTabColors()
+end
+
+function Window:SetTheme(t)
+	self.themeName = nil -- custom colours (SetThemePreset sets the name again)
+	local changed = {}
+	for k, v in pairs(t) do
+		if self.Theme[k] ~= nil and typeof(v) == "Color3" and self.Theme[k] ~= v then
+			self.Theme[k] = v
+			changed[k] = true
+		end
+	end
+	if changed.accent and t.toggle_on == nil then
+		self.Theme.toggle_on = self.Theme.accent
+		changed.toggle_on = true
+	end
+	if next(changed) == nil then return end
+	self:_ApplyTheme(changed)
+end
+
+-- noSave: apply without triggering onThemeChanged (used when a config / startup restore applies it)
+function Window:SetThemePreset(name, noSave)
+	local p = Library.ThemePresets[name]
+	if not p then return false end
+	self:SetTheme(p)
+	self.themeName = name
+	if not noSave then fire(self.onThemeChanged, name) end
+	return true
+end
+
+-- public window api --------------------------------------------------
+
+function Window:_RenderMenuKey()
+	local T = self.Theme
+	local hov = self.hover and self.hover.key
+	if self.listeningMenuKey then
+		self.keyTxt.Text = "..."
+		self.keyTxt.Color = T.accent
+		self.keyBdr.Color = T.accent
+	else
+		self.keyTxt.Text = self:_Fit("[" .. keyName(self.toggleKey) .. "]", 12, SIDEBAR_W - 32)
+		self.keyTxt.Color = hov and T.text or T.textDim
+		self.keyBdr.Color = hov and T.accent or T.border
+	end
+	self.keyBox.Color = hov and T.field:Lerp(T.accent, 0.18) or T.field
+end
+
+function Window:SetToggleKey(k)
+	self.toggleKey = k
+	self._tk = { down = isDown(k), src = "poll" } -- don't re-trigger while the new key is still held
+	self:_RenderMenuKey()
+	fire(self.onMenuKeyChanged, k)
+end
+
+function Window:SetTitle(t)
+	self.title = tostring(t)
+	self:_RefitTitle()
+end
+
+function Window:SetSubtitle(t)
+	self.subtitle = t ~= nil and tostring(t) or nil
+	self:_RefitTitle()
+	self:_Layout()
+end
+
+function Window:SetPosition(v)
+	self:_ClosePopup()
+	self.x, self.y = round(v.X), round(v.Y)
+	self:_Layout()
+end
+
+function Window:SetVisible(v)
+	self.visible = v and true or false
+	if not v then
+		self:_ClosePopup()
+		self:_BlurText()
+		self.dragging = false
+	end
+	self:_Layout()
+end
+
+function Window:Toggle() self:SetVisible(not self.visible) end
+function Window:Show() self:SetVisible(true) end
+function Window:Hide() self:SetVisible(false) end
+
+function Window:SetMinimized(v)
+	self.minimized = v and true or false
+	self.minTxt.Text = self.minimized and "+" or "-"
+	self:_ClosePopup()
+	self:_BlurText()
+	self.dragTarget = nil
+	self:_Layout()
+end
+
+function Window:AddSection(title)
+	return self:_Implicit():AddSection(title)
+end
+
+-- popups / text focus ------------------------------------------------
+
+function Window:_OpenPopup(el)
+	if self.popupOwner and self.popupOwner ~= el then
+		self:_ClosePopup()
+	end
+	local tt = self.textTarget
+	if tt and tt ~= el then
+		tt:_Blur(true)
+	end
+	self.popupOwner = el
+end
+
+function Window:_ClosePopup()
+	local o = self.popupOwner
+	if o then
+		self.popupOwner = nil
+		o:_PopupClose()
+	end
+end
+
+function Window:_BlurText()
+	local tt = self.textTarget
+	if tt then tt:_Blur(true) end
+end
+
+-- input --------------------------------------------------------------
+
+function Window:_BeginListen(target)
+	self.listening = target
+	local held = {}
+	for _, inp in ipairs(UIS:GetKeysPressed()) do
+		held[inp.KeyCode] = true
+	end
+	for _, mb in ipairs({ Enum.UserInputType.MouseButton2, Enum.UserInputType.MouseButton3 }) do
+		if isDown(mb) then held[mb] = true end
+	end
+	self._held = held
+end
+
+function Window:_InputBegan(input, gpe)
+	if self._destroyed then return end
+	local ut = input.UserInputType
+	local isKey = ut == Enum.UserInputType.Keyboard
+	local isMouseBtn = ut == Enum.UserInputType.MouseButton1 or ut == Enum.UserInputType.MouseButton2
+		or ut == Enum.UserInputType.MouseButton3
+
+	-- a key that the polling fallback already captured must not fire a second time from the real event
+	local ig = self._ignore
+	if ig then
+		if os.clock() - ig.t > 0.3 then
+			self._ignore = nil
+		elseif matchKey(input, ig.key) then
+			return
+		end
+	end
+
+	-- binding a key: gameProcessed is ignored, the game keeps receiving the key as well
+	if self.listening and (isKey or isMouseBtn) then
+		self.listening:_Capture(input)
+		return
+	end
+
+	if ut == Enum.UserInputType.MouseButton1 then
+		local m = UIS:GetMouseLocation()
+		self:_OnPress(m.X, m.Y)
+		return
+	end
+
+	if isKey and self.textTarget and self.visible then
+		self:_TextInput(input.KeyCode, true)
+		return
+	end
+
+	-- gameProcessed is deliberately ignored below: if the game also uses this key, both should run.
+	-- The only exception is typing into a game text box (chat etc.).
+	if isKey and UIS:GetFocusedTextBox() ~= nil then return end
+
+	if self.toggleKey and matchKey(input, self.toggleKey) then
+		self._tk.down, self._tk.src = true, "event"
+		self:Toggle()
+		return
+	end
+
+	for _, kb in ipairs(self.keybinds) do
+		if kb.Key and matchKey(input, kb.Key) then
+			kb:_Down("event")
+		end
+	end
+end
+
+function Window:_InputEnded(input)
+	if self._destroyed then return end
+	local ut = input.UserInputType
+	if ut == Enum.UserInputType.MouseButton1 then
+		self.dragging = false
+		local t = self.dragTarget
+		self.dragTarget = nil
+		if t and t._Release then t:_Release() end
+	end
+	if ut == Enum.UserInputType.Keyboard and self._rep and self._rep.kc == input.KeyCode then
+		self._rep = nil
+	end
+	local tk = self._tk
+	if tk.down and self.toggleKey and matchKey(input, self.toggleKey) then
+		tk.down = false
+	end
+	for _, kb in ipairs(self.keybinds) do
+		if kb.Key and matchKey(input, kb.Key) then
+			kb:_Up()
+		end
+	end
+end
+
+function Window:_InputChanged(input)
+	if self._destroyed then return end
+	local ut = input.UserInputType
+	if ut == Enum.UserInputType.MouseMovement then
+		local m = UIS:GetMouseLocation()
+		if self.dragging then
+			local dx, dy = m.X - self.dragLast.X, m.Y - self.dragLast.Y
+			self.dragLast = Vector2.new(m.X, m.Y)
+			self.x = self.x + dx
+			self.y = self.y + dy
+			self:_Layout()
+		elseif self.dragTarget then
+			self.dragTarget:_Drag(m.X, m.Y)
+		end
+	elseif ut == Enum.UserInputType.MouseWheel then
+		if not self.visible or self.minimized or not self.activeTab then return end
+		local m = UIS:GetMouseLocation()
+		local z = input.Position.Z
+		local owner = self.popupOwner
+		if owner and owner._PopupWheel and owner:_PopupHit(m.X, m.Y) then
+			owner:_PopupWheel(-z)
+			return
+		end
+		if inRect(m.X, m.Y, self.x + SIDEBAR_W, self.y + HEADER_H, self.w - SIDEBAR_W, self.h - HEADER_H) then
+			self:_ClosePopup()
+			self.activeTab.scroll = self.activeTab.scroll - z * 24
+			self:_Layout()
+		end
+	end
+end
+
+function Window:_OnPress(mx, my)
+	if not self.visible then return end
+
+	local rc = self.rc
+	local function hit(r)
+		return r ~= nil and inRect(mx, my, r[1], r[2], r[3], r[4])
+	end
+
+	if hit(rc.close) then
+		self:Close()
+		return
+	end
+	if hit(rc.min) then
+		self:SetMinimized(not self.minimized)
+		return
+	end
+	if hit(rc.key) then
+		self:_ClosePopup()
+		self:_BlurText()
+		self.listeningMenuKey = true
+		self:_BeginListen(self.menuKey)
+		self:_RenderMenuKey()
+		return
+	end
+	-- the whole top strip (sidebar logo area + top bar) drags the window
+	if inRect(mx, my, self.x, self.y, self.w, HEADER_H) then
+		self.dragging = true
+		self.dragLast = Vector2.new(mx, my)
+		self:_ClosePopup()
+		self:_BlurText()
+		return
+	end
+	if self.minimized then return end
+
+	-- sidebar: tab entries; any other click in the sidebar is swallowed
+	if mx <= self.x + SIDEBAR_W then
+		if self:_BarVisible() then
+			local t = self:_TabAt(mx, my)
+			if t then
+				self:SelectTab(t)
+				return
+			end
+		end
+		self:_ClosePopup()
+		self:_BlurText()
+		return
+	end
+
+	local tab = self.activeTab
+	if not tab then return end
+
+	local tt = self.textTarget
+	if tt and tt._isInput and not tt:_InBox(mx, my) then
+		tt:_Blur(true)
+	end
+
+	local owner = self.popupOwner
+	if owner then
+		if owner:_PopupHit(mx, my) then
+			owner:_PopupClick(mx, my)
+			return
+		end
+		local onOwner = owner:_InBox(mx, my)
+		self:_ClosePopup()
+		if onOwner then return end
+	end
+
+	for _, gb in ipairs(tab.groupboxes) do
+		for _, el in ipairs(gb.elements) do
+			if el._inView and el:_Hit(mx, my) then
+				-- a locked element still swallows the click, it just does nothing
+				if not el.locked then
+					el:_Click(mx, my)
+				end
+				return
+			end
+		end
+	end
+end
+
+function Window:_TextInput(kc, first)
+	local tt = self.textTarget
+	if not tt then return end
+	if kc == Enum.KeyCode.Return or kc == Enum.KeyCode.KeypadEnter then
+		tt:_Enter()
+		return
+	elseif kc == Enum.KeyCode.Escape then
+		tt:_Escape()
+		return
+	elseif kc == Enum.KeyCode.Backspace then
+		tt:_Backspace()
+	else
+		local ch = keyToChar(kc)
+		if not ch then return end
+		tt:_Char(ch)
+	end
+	if first then
+		self._rep = { kc = kc, t0 = os.clock(), last = 0 }
+	end
+end
+
+-- Only text typing blocks the game's keyboard input. Binding keys never does.
+local sinkInputs
+local function sinkFn()
+	return Enum.ContextActionResult.Sink
+end
+
+function Window:_UpdateSink()
+	local want = self.textTarget ~= nil and self.visible and not self._destroyed
+	if want == (self._sinking == true) then return end
+	local name = "LibrarySink_" .. tostring(self)
+	if want then
+		if not sinkInputs then
+			sinkInputs = {}
+			for _, kc in ipairs(Enum.KeyCode:GetEnumItems()) do
+				if kc ~= Enum.KeyCode.Unknown then table.insert(sinkInputs, kc) end
+			end
+		end
+		pcall(function()
+			CAS:BindActionAtPriority(name, sinkFn, false, 10000, table.unpack(sinkInputs))
+		end)
+		self._sinking = true
+	else
+		pcall(function() CAS:UnbindAction(name) end)
+		self._sinking = false
+	end
+end
+
+-- Fallback for bind capture: if the game swallows the key event before it reaches
+-- InputBegan, we still see the key physically go down here.
+function Window:_PollListen()
+	local t = self.listening
+	if not t then return end
+	local held = self._held
+	local now = {}
+
+	for _, inp in ipairs(UIS:GetKeysPressed()) do
+		local kc = inp.KeyCode
+		if kc ~= Enum.KeyCode.Unknown then
+			now[kc] = true
+			if not held[kc] then
+				self._ignore = { key = kc, t = os.clock() }
+				t:_Capture({ UserInputType = Enum.UserInputType.Keyboard, KeyCode = kc })
+				return
+			end
+		end
+	end
+	for _, mb in ipairs({ Enum.UserInputType.MouseButton2, Enum.UserInputType.MouseButton3 }) do
+		local pressed = isDown(mb)
+		now[mb] = pressed or nil
+		if pressed and not held[mb] then
+			self._ignore = { key = mb, t = os.clock() }
+			t:_Capture({ UserInputType = mb, KeyCode = Enum.KeyCode.Unknown })
+			return
+		end
+	end
+	for k in pairs(held) do
+		if not now[k] then held[k] = nil end
+	end
+end
+
+-- Same idea for triggering bound keys: never depends on gameProcessed.
+-- InputBegan and this poll share one "down" state so a press only fires once.
+function Window:_PollBinds()
+	local typing = self.textTarget ~= nil or self.listening ~= nil or UIS:GetFocusedTextBox() ~= nil
+
+	local tk = self._tk
+	if self.toggleKey then
+		local d = isDown(self.toggleKey)
+		if d and not tk.down then
+			tk.down, tk.src = true, "poll"
+			if not typing then self:Toggle() end
+		elseif not d and tk.down and tk.src == "poll" then
+			tk.down = false
+		end
+	end
+
+	for _, kb in ipairs(self.keybinds) do
+		local k = kb.Key
+		if k then
+			local d = isDown(k)
+			if d and not kb._down then
+				if typing then
+					kb._down, kb._src, kb._quiet = true, "poll", true
+				else
+					kb:_Down("poll")
+				end
+			elseif not d and kb._down and kb._src == "poll" then
+				kb:_Up()
+			end
+		end
+	end
+end
+
+function Window:_Tick()
+	if self._destroyed then return end
+	self:_UpdateBlocker()
+	self:_UpdateSink()
+	self:_UpdateHover()
+	self:_PollListen()
+	self:_PollBinds()
+	for _, fn in pairs(self.tickers) do
+		fn()
+	end
+	local tt = self.textTarget
+	if tt then
+		if tt._Tick then tt:_Tick() end
+		local rep = self._rep
+		if rep then
+			if UIS:IsKeyDown(rep.kc) then
+				local now = os.clock()
+				if now - rep.t0 > 0.4 and now - rep.last > 0.035 then
+					rep.last = now
+					self:_TextInput(rep.kc, false)
+				end
+			else
+				self._rep = nil
+			end
+		end
+	else
+		self._rep = nil
+	end
+end
+
+----------------------------------------------------------------------
+-- Tab
+----------------------------------------------------------------------
+
+function Tab:Select()
+	self.window:SelectTab(self)
+end
+
+function Tab:AddGroupbox(title, side)
+	local win = self.window
+	if side ~= "Right" and side ~= "Full" then side = "Left" end
+	local colW, fullW = win:_ColWidths()
+
+	local gb = setmetatable({
+		window = win, tab = self, title = title, side = side, elements = {}, frame = {},
+	}, Groupbox)
+	gb.gw = (side == "Full") and fullW or colW
+	gb.cw = gb.gw - 2 * PAD
+
+	local function F(class, props)
+		props.Visible = false
+		props.Position = V0
+		return win:_D(class, props, gb.frame)
+	end
+	gb.bgSq = F("Square", { Filled = true, Color = "panel", Size = Vector2.new(gb.gw, 10), ZIndex = 2 })
+	gb.edgeL = F("Square", { Filled = true, Color = "border", Size = Vector2.new(1, 10), ZIndex = 3 })
+	gb.edgeR = F("Square", { Filled = true, Color = "border", Size = Vector2.new(1, 10), ZIndex = 3 })
+	gb.edgeT = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.gw, 1), ZIndex = 3 })
+	gb.edgeB = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.gw, 1), ZIndex = 3 })
+	-- header: small accent notch in front of the title and a thin rule underneath
+	gb.mark = F("Square", { Filled = true, Color = "accent", Size = Vector2.new(3, 11), ZIndex = 4 })
+	gb.sep = F("Square", { Filled = true, Color = "border", Size = Vector2.new(gb.cw, 1), ZIndex = 3 })
+	if title ~= nil then
+		gb.titleTxt = F("Text", { Text = tostring(title), Color = "text", Size = 12, Font = FONT, ZIndex = 4 })
+	end
+
+	table.insert(self.groupboxes, gb)
+	win:_Layout()
+	return gb
+end
+
+function Tab:AddLeftGroupbox(title) return self:AddGroupbox(title, "Left") end
+function Tab:AddRightGroupbox(title) return self:AddGroupbox(title, "Right") end
+function Tab:AddFullGroupbox(title) return self:AddGroupbox(title, "Full") end
+function Tab:AddSection(title) return self:AddGroupbox(title, "Full") end
+
+function Tab:_Default()
+	if not self.defaultBox then
+		self.defaultBox = self:AddGroupbox(nil, "Full")
+	end
+	return self.defaultBox
+end
+
+----------------------------------------------------------------------
+-- Groupbox
+----------------------------------------------------------------------
+
+function Groupbox:_HasContent()
+	return self.title ~= nil or #self.elements > 0
+end
+
+function Groupbox:_Height()
+	local h = self.title ~= nil and GB_HEAD or 8
+	for _, el in ipairs(self.elements) do
+		h = h + el.height
+	end
+	return h + 6
+end
+
+function Groupbox:_SetFrameVisible(v)
+	for _, o in ipairs(self.frame) do
+		o.Visible = v
+	end
+end
+
+-- gx/gy: absolute top-left of the box; top/bottom: visible body range
+function Groupbox:_Place(gx, gy, top, bottom, showBody)
+	local h = self:_Height()
+	local gw = self.gw
+	self.x, self.y = gx, gy
+
+	local y1, y2 = math.max(gy, top), math.min(gy + h, bottom)
+	local vis = showBody and y2 > y1
+	self.bgSq.Visible = vis
+	self.edgeL.Visible = vis
+	self.edgeR.Visible = vis
+	if vis then
+		self.bgSq.Position = Vector2.new(gx, y1)
+		self.bgSq.Size = Vector2.new(gw, y2 - y1)
+		self.edgeL.Position = Vector2.new(gx, y1)
+		self.edgeL.Size = Vector2.new(1, y2 - y1)
+		self.edgeR.Position = Vector2.new(gx + gw - 1, y1)
+		self.edgeR.Size = Vector2.new(1, y2 - y1)
+	end
+
+	local tVis = showBody and gy >= top and gy + 1 <= bottom
+	self.edgeT.Visible = tVis
+	if tVis then self.edgeT.Position = Vector2.new(gx, gy) end
+
+	local bVis = showBody and (gy + h - 1 >= top) and (gy + h <= bottom)
+	self.edgeB.Visible = bVis
+	if bVis then self.edgeB.Position = Vector2.new(gx, gy + h - 1) end
+
+	local hasTitle = self.title ~= nil
+	local hVis = showBody and hasTitle and gy + 8 >= top and gy + 22 <= bottom
+	self.mark.Visible = hVis
+	if hVis then self.mark.Position = Vector2.new(gx + PAD, gy + 9) end
+	if self.titleTxt then
+		self.titleTxt.Visible = hVis
+		if hVis then self.titleTxt.Position = Vector2.new(gx + PAD + 9, gy + 8) end
+	end
+	local sVis = showBody and hasTitle and gy + GB_HEAD - 4 >= top and gy + GB_HEAD - 3 <= bottom
+	self.sep.Visible = sVis
+	if sVis then self.sep.Position = Vector2.new(gx + PAD, gy + GB_HEAD - 4) end
+
+	local cy = gy + (hasTitle and GB_HEAD or 8)
+	for _, el in ipairs(self.elements) do
+		el:_Place(gx + PAD, cy, top, bottom, showBody)
+		cy = cy + el.height
+	end
+end
+
+function Groupbox:_Add(el)
+	table.insert(self.elements, el)
+	self.window:_Layout()
+	return el
+end
+
+function Groupbox:SetTitle(t)
+	local win = self.window
+	self.title = t
+	if t ~= nil then
+		if not self.titleTxt then
+			self.titleTxt = win:_D("Text", { Visible = false, Text = tostring(t), Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 4 }, self.frame)
+		end
+		self.titleTxt.Text = tostring(t)
+	end
+	win:_Layout()
+end
+
+----------------------------------------------------------------------
+-- Divider (hairline with a short accent segment at the start)
+----------------------------------------------------------------------
+
+function Groupbox:AddDivider()
+	local win, W = self.window, self.cw
+	local el = newElement(self, "Divider", 12)
+	el.lockable = false
+	el.line = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(W, 1), Position = V0, ZIndex = 3 }, el.objs)
+	el.seg = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(20, 1), Position = V0, ZIndex = 4 }, el.objs)
+
+	function el:Layout(x, y)
+		self.line.Position = Vector2.new(x, y + 6)
+		self.seg.Position = Vector2.new(x, y + 6)
+	end
+	function el:Get() return nil end
+	function el:SetValue() end
+	function el:SetTitle() end
+
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Toggle (checkbox on the left, label to its right)
+----------------------------------------------------------------------
+
+function Groupbox:AddToggle(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local T = win.Theme
+	local el = newElement(self, "Toggle", 28)
+	el.title = o.Title or "Toggle"
+	el.Value = o.Default == true
+	el.Callback = o.Callback
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = T.text, Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.track = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(16, 16), Position = V0, ZIndex = 3 }, el.objs)
+	el.trackBdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(16, 16), Position = V0, ZIndex = 4 }, el.objs)
+	el.knob = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(8, 8), Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:_Paint()
+		local on = self.Value
+		self.track.Color = T.field
+		self.trackBdr.Color = on and T.toggle_on or T.border
+		self.knob.Color = on and T.toggle_on or T.field
+		self.label.Color = on and T.text or T.textDim
+	end
+
+	function el:Layout(x, y)
+		self.label.Position = Vector2.new(x + 26, y + 7)
+		self.track.Position = Vector2.new(x, y + 6)
+		self.trackBdr.Position = Vector2.new(x, y + 6)
+		self.knob.Position = Vector2.new(x + 4, y + 10)
+	end
+
+	function el:_ApplyTheme()
+		self:_Paint()
+	end
+
+	function el:_Click()
+		self:SetValue(not self.Value)
+	end
+
+	function el:SetValue(v, silent)
+		self.Value = v and true or false
+		self:_Paint()
+		if not silent then fire(self.Callback, self.Value) end
+	end
+
+	function el:Get() return self.Value end
+	function el:_Save() return self.Value end
+	function el:_Load(v) self:SetValue(v == true) end
+
+	el:_Paint()
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- shared key bind logic (Keybind and KeybindToggle)
+-- the element needs: Key, Mode, listening, Changed, _Render(), _Trigger(down)
+-- optional: _OnRebind()
+----------------------------------------------------------------------
+
+local function attachBind(el, win)
+	-- right after binding, the key is usually still held: don't fire until it has been released
+	function el:_Swallow()
+		if self.Key and isDown(self.Key) then
+			self._down, self._src, self._quiet = true, "poll", true
+		else
+			self._down, self._quiet = false, false
+		end
+	end
+
+	function el:_Capture(input)
+		local ut = input.UserInputType
+		local newKey, cancel = nil, false
+		if ut == Enum.UserInputType.Keyboard then
+			local kc = input.KeyCode
+			if kc == Enum.KeyCode.Escape then
+				cancel = true
+			elseif kc == Enum.KeyCode.Backspace or kc == Enum.KeyCode.Delete then
+				newKey = nil
+			else
+				newKey = kc
+			end
+		elseif ut == Enum.UserInputType.MouseButton1 then
+			cancel = true
+		else
+			newKey = ut
+		end
+		self.listening = false
+		win.listening = nil
+		if not cancel then
+			self.Key = newKey
+			if self._OnRebind then self:_OnRebind() end
+			self:_Swallow()
+			fire(self.Changed, self.Key)
+		end
+		self:_Render()
+	end
+
+	-- press / release, shared by the InputBegan path ("event") and the polling fallback ("poll")
+	function el:_Down(src)
+		if self._down then return end
+		self._down, self._src, self._quiet = true, src, false
+		self:_Trigger(true)
+	end
+
+	function el:_Up()
+		if not self._down then return end
+		self._down = false
+		local quiet = self._quiet
+		self._quiet = false
+		if not quiet and self.Mode == "Hold" then
+			self:_Trigger(false)
+		end
+	end
+
+	table.insert(win.keybinds, el)
+end
+
+local function parseKey(def)
+	if type(def) == "string" then
+		local ok, kc = pcall(function() return Enum.KeyCode[def] end)
+		return ok and kc or nil
+	end
+	return def
+end
+
+----------------------------------------------------------------------
+-- Keybind toggle (checkbox + label + key box on the right)
+-- Options: Title, Default (bool), Key (KeyCode / UserInputType / name), Mode ("Toggle" | "Hold"),
+--          Callback(value), ChangedCallback(key), Locked, Flag
+-- Mode "Toggle": pressing the key flips the toggle. Mode "Hold": toggle is on while the key is held.
+-- Clicking the checkbox works as well; clicking the key box binds a new key.
+----------------------------------------------------------------------
+
+function Groupbox:AddKeybindToggle(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local T = win.Theme
+	local el = newElement(self, "KeybindToggle", 28)
+	el.title = o.Title or "Keybind Toggle"
+	el.Value = o.Default == true
+	el.Mode = o.Mode or "Toggle"
+	el.Callback = o.Callback
+	el.Changed = o.ChangedCallback
+	el.listening = false
+	el.Key = parseKey(o.Key)
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = T.text, Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.track = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(16, 16), Position = V0, ZIndex = 3 }, el.objs)
+	el.trackBdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(16, 16), Position = V0, ZIndex = 4 }, el.objs)
+	el.knob = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(8, 8), Position = V0, ZIndex = 5 }, el.objs)
+	el.kbox = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(KB_W, 18), Position = V0, ZIndex = 3 }, el.objs)
+	el.kbdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(KB_W, 18), Position = V0, ZIndex = 4 }, el.objs)
+	el.ktxt = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
+
+	local function keyX() return el.x + W - KB_W end
+
+	function el:_Paint()
+		local on = self.Value
+		self.track.Color = T.field
+		self.trackBdr.Color = on and T.toggle_on or T.border
+		self.knob.Color = on and T.toggle_on or T.field
+		self.label.Color = on and T.text or T.textDim
+	end
+
+	function el:Layout(x, y)
+		local kx = x + W - KB_W
+		self.label.Position = Vector2.new(x + 26, y + 7)
+		self.track.Position = Vector2.new(x, y + 6)
+		self.trackBdr.Position = Vector2.new(x, y + 6)
+		self.knob.Position = Vector2.new(x + 4, y + 10)
+		self.kbox.Position = Vector2.new(kx, y + 5)
+		self.kbdr.Position = Vector2.new(kx, y + 5)
+		self.ktxt.Position = Vector2.new(kx + KB_W / 2, y + 8)
+	end
+
+	function el:_Render()
+		self.label.Text = win:_Fit(self.title, 13, W - 26 - KB_W - 8)
+		if self.listening then
+			self.ktxt.Text = "..."
+			self.ktxt.Color = T.accent
+			self.kbdr.Color = T.accent
+		else
+			self.ktxt.Text = win:_Fit("[" .. keyName(self.Key) .. "]", 12, KB_W - 6)
+			self.ktxt.Color = T.textDim
+			self.kbdr.Color = T.border
+		end
+		self:_Paint()
+	end
+
+	function el:_Click(mx, my)
+		if inRect(mx, my, keyX(), self.y + 5, KB_W, 18) then
+			win:_ClosePopup()
+			win:_BlurText()
+			self.listening = true
+			win:_BeginListen(self)
+			self:_Render()
+		else
+			self:SetValue(not self.Value)
+		end
+	end
+
+	function el:_Trigger(down)
+		if win.textTarget or self.listening or self.locked then return end
+		if self.Mode == "Hold" then
+			self:SetValue(down)
+		elseif down then
+			self:SetValue(not self.Value)
+		end
+	end
+
+	function el:SetValue(v, silent)
+		self.Value = v and true or false
+		self:_Paint()
+		if not silent then fire(self.Callback, self.Value) end
+	end
+
+	function el:SetKey(k, silent)
+		self.Key = parseKey(k)
+		self:_Swallow()
+		self:_Render()
+		if not silent then fire(self.Changed, self.Key) end
+	end
+
+	function el:SetMode(m)
+		if m == "Hold" or m == "Toggle" then self.Mode = m end
+	end
+
+	function el:GetKey() return self.Key end
+	function el:GetState() return self.Value end
+	function el:Get() return self.Value end
+
+	function el:_Save()
+		return { v = self.Value, key = encodeKey(self.Key) }
+	end
+
+	function el:_Load(a)
+		if type(a) ~= "table" then return end
+		local k, valid = decodeKey(a.key)
+		if valid then self:SetKey(k, true) end
+		self:SetValue(a.v == true)
+	end
+
+	attachBind(el, win)
+	el:_Render()
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Button / Confirm button
+-- flat field with an accent stripe on the left, left-aligned label, arrow on the right
+----------------------------------------------------------------------
+
+local function buildButton(gb, o, confirm)
+	o = o or {}
+	local win, W = gb.window, gb.cw
+	local T = win.Theme
+	local el = newElement(gb, confirm and "ConfirmButton" or "Button", 36)
+	el.title = o.Title or (confirm and "Confirm Button" or "Button")
+	el.confirmTitle = o.ConfirmTitle or "Click again to confirm"
+	el.timeout = o.Timeout or 5 -- seconds before a confirm button returns to normal
+	el.Callback = o.Callback
+	el.armed = false
+
+	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BTN_H), Position = V0, ZIndex = 3 }, el.objs)
+	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(W, BTN_H), Position = V0, ZIndex = 4 }, el.objs)
+	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(3, BTN_H), Position = V0, ZIndex = 5 }, el.objs)
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+	el.glyph = win:_D("Text", { Visible = false, Text = ">", Color = "accent", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:Layout(x, y)
+		self.box.Position = Vector2.new(x, y + 6)
+		self.bdr.Position = Vector2.new(x, y + 6)
+		self.bar.Position = Vector2.new(x, y + 6)
+		self.label.Position = Vector2.new(x + 14, y + 12)
+		self.glyph.Position = Vector2.new(x + W - 16, y + 12)
+	end
+
+	function el:_Render()
+		if self.armed then
+			local txt = self.confirmTitle
+			if self.countdown then
+				txt = txt .. " (" .. self.countdown .. "s)"
+			end
+			self.label.Text = win:_Fit(txt, 12, W - 44)
+			self.label.Color = T.accent
+			self.bdr.Color = T.accent
+			self.glyph.Text = "!"
+		else
+			self.label.Text = win:_Fit(self.title, 12, W - 44)
+			self.label.Color = T.text
+			self.bdr.Color = T.border
+			self.glyph.Text = ">"
+		end
+	end
+
+	function el:_Flash()
+		self.box.Color = T.accentDim
+		task.delay(0.12, function()
+			if not self.destroyed then self.box.Color = T.field end
+		end)
+	end
+
+	function el:_Disarm()
+		self.armed = false
+		self.countdown = nil
+		self._armId = (self._armId or 0) + 1 -- invalidates any running countdown
+		self:_Render()
+	end
+
+	-- first click: show the confirm state and start a countdown that puts the button back to normal
+	function el:_Arm()
+		self.armed = true
+		self._armId = (self._armId or 0) + 1
+		local id = self._armId
+		local started = os.clock()
+		self.countdown = math.ceil(self.timeout)
+		self:_Render()
+		task.spawn(function()
+			while self._armId == id and self.armed and not self.destroyed and not win._destroyed do
+				local left = self.timeout - (os.clock() - started)
+				if left <= 0 then
+					self:_Disarm()
+					return
+				end
+				local secs = math.ceil(left)
+				if secs ~= self.countdown then
+					self.countdown = secs
+					self:_Render()
+				end
+				task.wait(0.1)
+			end
+		end)
+	end
+
+	function el:_Click(mx, my)
+		if not inRect(mx, my, self.x, self.y + 6, W, BTN_H) then return end
+		if confirm then
+			if not self.armed then
+				self:_Arm()
+				return
+			end
+			self:_Disarm()
+		end
+		self:_Flash()
+		fire(self.Callback)
+	end
+
+	function el:Get() return nil end
+	function el:SetValue() end
+
+	el:_Render()
+	register(el, o)
+	return gb:_Add(el)
+end
+
+function Groupbox:AddButton(o) return buildButton(self, o, false) end
+function Groupbox:AddConfirmButton(o) return buildButton(self, o, true) end
+
+----------------------------------------------------------------------
+-- Dropdown / MultiDropdown
+-- Searchable = true works on both (typing filters the list)
+-- the selected value(s) are marked with a thin accent bar and a tinted row (no font symbols)
+-- multi display: "None" / "Name" / "Name +N"
+----------------------------------------------------------------------
+
+local function buildList(gb, o, multi)
+	o = o or {}
+	local search = o.Searchable == true
+	local win, W = gb.window, gb.cw
+	local T = win.Theme
+	local kind = multi and "MultiDropdown" or "Dropdown"
+	local el = newElement(gb, kind, 48)
+	el.title = o.Title or "Dropdown"
+	el.options = o.Options or {}
+	el.Callback = o.Callback
+	el.multi, el.search = multi, search
+	el.maxVisible = o.MaxVisible or 6
+	el.open, el.scroll, el.query = false, 0, ""
+	el.filtered = {}
+	el.rows = {}
+	el._visRows, el._popupH = 0, 0
+
+	if multi then
+		el.Value = {}
+		local def = o.Default or {}
+		if type(def) ~= "table" then def = { def } end
+		for k, v in pairs(def) do
+			if type(k) == "number" then el.Value[v] = true elseif v then el.Value[k] = true end
+		end
+	else
+		el.Value = o.Default
+		if el.Value == nil then el.Value = el.options[1] end
+	end
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 3 }, el.objs)
+	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 4 }, el.objs)
+	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(2, BOX_H), Position = V0, ZIndex = 5 }, el.objs)
+	el.val = win:_D("Text", { Visible = false, Text = "", Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+	el.arrow = win:_D("Text", { Visible = false, Text = "v", Color = "accent", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+
+	if search then
+		el.sbg = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 8 }, el.pobjs)
+		el.sbdr = win:_D("Square", { Visible = false, Filled = false, Color = "accent", Thickness = 1, Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 9 }, el.pobjs)
+		el.stxt = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 9 }, el.pobjs)
+	end
+	el.sind = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(2, 10), Position = V0, ZIndex = 10 }, el.pobjs)
+
+	-- returns name, extraCount (extraCount only for multi with 2+ selected)
+	function el:_Parts()
+		if self.multi then
+			local first, count = nil, 0
+			for _, opt in ipairs(self.options) do
+				if self.Value[opt] then
+					count = count + 1
+					if first == nil then first = tostring(opt) end
+				end
+			end
+			if count == 0 then return "None" end
+			if count == 1 then return first end
+			return first, count - 1
+		end
+		return self.Value ~= nil and tostring(self.Value) or "None"
+	end
+
+	function el:_Render()
+		self.label.Text = self.title
+		local avail = W - 32
+		local name, extra = self:_Parts()
+		if extra then
+			local suffix = " +" .. extra
+			self.val.Text = win:_Fit(name, 12, avail - win:_TextW(suffix, 12)) .. suffix
+		else
+			self.val.Text = win:_Fit(name, 12, avail)
+		end
+	end
+
+	function el:_ApplyTheme()
+		self:_Render()
+		if self.open then self:_PopupRefresh() end
+	end
+
+	function el:_IsOn(opt)
+		if self.multi then return self.Value[opt] == true end
+		return self.Value == opt
+	end
+
+	function el:_InBox(mx, my)
+		return inRect(mx, my, self.x, self.y + 18, W, BOX_H)
+	end
+
+	function el:Layout(x, y)
+		local by = y + 18
+		self.label.Position = Vector2.new(x, y + 3)
+		self.box.Position = Vector2.new(x, by)
+		self.bdr.Position = Vector2.new(x, by)
+		self.bar.Position = Vector2.new(x, by)
+		self.val.Position = Vector2.new(x + 10, by + 5)
+		self.arrow.Position = Vector2.new(x + W - 16, by + 5)
+		if self.open then self:_PopupRefresh() end
+	end
+
+	function el:_EnsureRows(n)
+		while #self.rows < n do
+			local r = {}
+			r.bg = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 8 }, self.pobjs)
+			r.bdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 9 }, self.pobjs)
+			r.mark = win:_D("Square", { Visible = false, Filled = true, Color = T.accent, Size = Vector2.new(2, BOX_H - 2), Position = V0, ZIndex = 10 }, self.pobjs)
+			r.txt = win:_D("Text", { Visible = false, Text = "", Color = T.textDim, Size = 12, Font = FONT, Position = V0, ZIndex = 9 }, self.pobjs)
+			table.insert(self.rows, r)
+		end
+	end
+
+	function el:_Filter()
+		local f = {}
+		local q = self.query:lower()
+		for _, opt in ipairs(self.options) do
+			if q == "" or tostring(opt):lower():find(q, 1, true) then
+				table.insert(f, opt)
+			end
+		end
+		self.filtered = f
+		self.scroll = clamp(self.scroll, 0, math.max(0, #f - self.maxVisible))
+	end
+
+	function el:_PopupRefresh()
+		if not self.open then return end
+		self:_Filter()
+		local bx = self.x
+		local cy = self.y + 18 + BOX_H
+		local n = math.min(#self.filtered, self.maxVisible)
+		local vis = math.max(n, 1)
+		self:_EnsureRows(vis)
+
+		if self.search then
+			self.sbg.Position = Vector2.new(bx, cy)
+			self.sbdr.Position = Vector2.new(bx, cy)
+			self.stxt.Position = Vector2.new(bx + 10, cy + 5)
+			if self.query == "" then
+				self.stxt.Text = "Search..."
+				self.stxt.Color = T.textDim
+			else
+				local cur = (math.floor(os.clock() * 2) % 2 == 0) and "|" or ""
+				self.stxt.Text = win:_FitTail(self.query .. cur, 12, W - 20)
+				self.stxt.Color = T.text
+			end
+			self.sbg.Visible, self.sbdr.Visible, self.stxt.Visible = true, true, true
+			cy = cy + BOX_H
+		end
+
+		local rowsTop = cy
+		local tint = T.field:Lerp(T.accent, 0.14)
+		for i = 1, #self.rows do
+			local r = self.rows[i]
+			if i <= vis then
+				r.bg.Position = Vector2.new(bx, cy)
+				r.bdr.Position = Vector2.new(bx, cy)
+				r.txt.Position = Vector2.new(bx + 10, cy + 5)
+				r.mark.Position = Vector2.new(bx + 1, cy + 1)
+				local on = false
+				if n == 0 then
+					r.txt.Text = "No results"
+					r.txt.Color = T.textDim
+				else
+					local opt = self.filtered[self.scroll + i]
+					on = self:_IsOn(opt)
+					r.txt.Text = win:_Fit(tostring(opt), 12, W - 26)
+					r.txt.Color = on and T.text or T.textDim
+				end
+				r.bg.Color = on and tint or T.field
+				r.bdr.Color = T.border
+				r.mark.Color = T.accent
+				r.bg.Visible, r.bdr.Visible, r.txt.Visible = true, true, true
+				r.mark.Visible = on
+				cy = cy + BOX_H
+			else
+				r.bg.Visible, r.bdr.Visible, r.txt.Visible, r.mark.Visible = false, false, false, false
+			end
+		end
+
+		-- scroll indicator: whole pixels, inset 2px from the rows' top/bottom and 4px from the right edge
+		if #self.filtered > self.maxVisible then
+			local trackH = n * BOX_H
+			local maxScroll = #self.filtered - self.maxVisible
+			local trackTop, trackLen = rowsTop + 2, trackH - 4
+			local th = math.min(trackLen, math.max(10, math.floor(trackLen * self.maxVisible / #self.filtered + 0.5)))
+			self.sind.Size = Vector2.new(2, th)
+			self.sind.Position = Vector2.new(bx + W - 5, trackTop + math.floor((trackLen - th) * (self.scroll / maxScroll) + 0.5))
+			self.sind.Visible = true
+		else
+			self.sind.Visible = false
+		end
+
+		self._visRows = vis
+		self._popupH = (self.search and BOX_H or 0) + vis * BOX_H
+	end
+
+	-- x, y, w, h of the open popup (used by the input blocker)
+	function el:_PopupRect()
+		if not self.open then return nil end
+		return self.x, self.y + 18 + BOX_H, W, self._popupH
+	end
+
+	function el:_PopupHit(mx, my)
+		return self.open and inRect(mx, my, self.x, self.y + 18 + BOX_H, W, self._popupH)
+	end
+
+	function el:_Pick(opt)
+		if self.multi then
+			local sel = self.Value
+			if sel[opt] then sel[opt] = nil else sel[opt] = true end
+			self:_Render()
+			self:_PopupRefresh()
+			fire(self.Callback, self.Value)
+		else
+			self.Value = opt
+			self:_Render()
+			fire(self.Callback, opt)
+			win:_ClosePopup()
+		end
+	end
+
+	function el:_PopupClick(mx, my)
+		local rel = my - (self.y + 18 + BOX_H)
+		local idx = math.floor(rel / BOX_H)
+		if self.search then
+			if idx == 0 then return end
+			idx = idx - 1
+		end
+		if idx < 0 or idx >= self._visRows then return end
+		local opt = self.filtered[self.scroll + idx + 1]
+		if opt ~= nil then self:_Pick(opt) end
+	end
+
+	function el:_PopupWheel(dir)
+		self.scroll = self.scroll + dir
+		self:_PopupRefresh()
+	end
+
+	function el:_PopupOpen()
+		win:_OpenPopup(self)
+		self.open = true
+		self.query = ""
+		self.scroll = 0
+		if not self.multi then
+			for i, opt in ipairs(self.options) do
+				if opt == self.Value then
+					self.scroll = math.max(0, i - self.maxVisible)
+					break
+				end
+			end
+		end
+		if self.search then win.textTarget = self end
+		self:_PopupRefresh()
+	end
+
+	function el:_PopupClose()
+		self.open = false
+		for _, obj in ipairs(self.pobjs) do obj.Visible = false end
+		if win.textTarget == self then win.textTarget = nil end
+	end
+
+	function el:_Click(mx, my)
+		if not self:_InBox(mx, my) then return end
+		if self.open then win:_ClosePopup() else self:_PopupOpen() end
+	end
+
+	-- text capture (searchable only)
+	function el:_Char(ch) self.query = self.query .. ch self.scroll = 0 self:_PopupRefresh() end
+	function el:_Backspace() self.query = self.query:sub(1, -2) self.scroll = 0 self:_PopupRefresh() end
+	function el:_Enter()
+		if self.filtered[1] ~= nil then self:_Pick(self.filtered[1]) end
+	end
+	function el:_Escape() win:_ClosePopup() end
+	function el:_Blur() win:_ClosePopup() end
+	function el:_Tick()
+		local ph = math.floor(os.clock() * 2) % 2
+		if ph ~= self._ph then
+			self._ph = ph
+			self:_PopupRefresh()
+		end
+	end
+
+	-- public
+	function el:SetValue(v, silent)
+		if self.multi then
+			local set = {}
+			if type(v) ~= "table" then v = { v } end
+			for k, val in pairs(v) do
+				if type(k) == "number" then set[val] = true elseif val then set[k] = true end
+			end
+			self.Value = set
+		else
+			self.Value = v
+		end
+		self:_Render()
+		self:_PopupRefresh()
+		if not silent then fire(self.Callback, self.Value) end
+	end
+
+	function el:SetOptions(list, keep)
+		self.options = list or {}
+		if self.multi then
+			local set = {}
+			for _, opt in ipairs(self.options) do
+				if keep and self.Value[opt] then set[opt] = true end
+			end
+			self.Value = set
+		else
+			local found = false
+			for _, opt in ipairs(self.options) do
+				if opt == self.Value then found = true end
+			end
+			if not (keep and found) then self.Value = self.options[1] end
+		end
+		self:_Render()
+		self:_PopupRefresh()
+	end
+
+	function el:Get() return self.Value end
+
+	function el:_Save()
+		if self.multi then
+			local out = {}
+			for _, opt in ipairs(self.options) do
+				if self.Value[opt] then table.insert(out, opt) end
+			end
+			return out
+		end
+		local v = self.Value
+		if type(v) == "string" or type(v) == "number" or type(v) == "boolean" then return v end
+		return nil
+	end
+
+	function el:_Load(v)
+		if self.multi then
+			if type(v) ~= "table" then return end
+			local valid = {}
+			for _, name in ipairs(v) do
+				if table.find(self.options, name) then table.insert(valid, name) end
+			end
+			self:SetValue(valid)
+		elseif table.find(self.options, v) then
+			self:SetValue(v)
+		end
+	end
+
+	el:_Render()
+	register(el, o)
+	return gb:_Add(el)
+end
+
+-- Options: Title, Options, Default, Callback, MaxVisible, Searchable, Locked, Flag
+function Groupbox:AddDropdown(o) return buildList(self, o, false) end
+function Groupbox:AddMultiDropdown(o) return buildList(self, o, true) end
+
+----------------------------------------------------------------------
+-- Input (text box with an underline instead of a full outline)
+----------------------------------------------------------------------
+
+function Groupbox:AddInput(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local T = win.Theme
+	local el = newElement(self, "Input", 48)
+	el.title = o.Title or "Input"
+	el.placeholder = o.Placeholder or ""
+	el.numeric = o.Numeric == true
+	el.maxLength = o.MaxLength or 64
+	el.Callback = o.Callback
+	el.Changed = o.Changed
+	el.text = tostring(o.Default or "")
+	el.Value = el.numeric and tonumber(el.text) or el.text
+	el.focused = false
+	el._isInput = true
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, BOX_H), Position = V0, ZIndex = 3 }, el.objs)
+	el.bdr = win:_D("Square", { Visible = false, Filled = true, Color = "border", Size = Vector2.new(W, 2), Position = V0, ZIndex = 4 }, el.objs)
+	el.txt = win:_D("Text", { Visible = false, Text = "", Color = "text", Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:Layout(x, y)
+		self.label.Position = Vector2.new(x, y + 3)
+		self.box.Position = Vector2.new(x, y + 18)
+		self.bdr.Position = Vector2.new(x, y + 18 + BOX_H - 2)
+		self.txt.Position = Vector2.new(x + 8, y + 22)
+	end
+
+	function el:_Render()
+		local maxW = W - 16
+		self.label.Text = self.title
+		if self.focused then
+			local cur = (math.floor(os.clock() * 2) % 2 == 0) and "|" or ""
+			self.txt.Text = win:_FitTail(self.text .. cur, 12, maxW)
+			self.txt.Color = T.text
+			self.bdr.Color = T.accent
+		else
+			self.bdr.Color = T.border
+			if self.text == "" then
+				self.txt.Text = win:_Fit(self.placeholder, 12, maxW)
+				self.txt.Color = T.textDim
+			else
+				self.txt.Text = win:_Fit(self.text, 12, maxW)
+				self.txt.Color = T.text
+			end
+		end
+	end
+
+	function el:_InBox(mx, my)
+		return inRect(mx, my, self.x, self.y + 18, W, BOX_H)
+	end
+
+	function el:_Click(mx, my)
+		if not self:_InBox(mx, my) or self.focused then return end
+		win:_ClosePopup()
+		if win.textTarget then win.textTarget:_Blur(true) end
+		self.focused = true
+		self._prev = self.text
+		self._ph = nil
+		win.textTarget = self
+		self:_Render()
+	end
+
+	function el:_Blur(commit)
+		if not self.focused then return end
+		self.focused = false
+		if win.textTarget == self then win.textTarget = nil end
+		if commit then
+			if self.numeric and tonumber(self.text) == nil then
+				self.text = self._prev
+			end
+			self.Value = self.numeric and tonumber(self.text) or self.text
+			fire(self.Callback, self.Value)
+		else
+			self.text = self._prev
+		end
+		self:_Render()
+	end
+
+	function el:_Enter() self:_Blur(true) end
+	function el:_Escape() self:_Blur(false) end
+
+	function el:_Char(ch)
+		if #self.text >= self.maxLength then return end
+		if self.numeric and not ch:match("[%d%.%-]") then return end
+		self.text = self.text .. ch
+		self:_Render()
+		fire(self.Changed, self.text)
+	end
+
+	function el:_Backspace()
+		self.text = self.text:sub(1, -2)
+		self:_Render()
+		fire(self.Changed, self.text)
+	end
+
+	function el:_Tick()
+		local ph = math.floor(os.clock() * 2) % 2
+		if ph ~= self._ph then
+			self._ph = ph
+			self:_Render()
+		end
+	end
+
+	function el:SetValue(v, silent)
+		self.text = tostring(v == nil and "" or v)
+		self.Value = self.numeric and tonumber(self.text) or self.text
+		self:_Render()
+		if not silent then fire(self.Callback, self.Value) end
+	end
+
+	function el:Get() return self.Value end
+	function el:_Save() return self.Value end
+	function el:_Load(v) if v ~= nil then self:SetValue(v) end end
+
+	el:_Render()
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Slider
+-- thin track with a round knob; the value sits (accent coloured) in a fixed-width
+-- area on the right, so its position never depends on measuring the text
+----------------------------------------------------------------------
+
+function Groupbox:AddSlider(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local el = newElement(self, "Slider", 40)
+	el.title = o.Title or "Slider"
+	el.min = o.Min or 0
+	el.max = o.Max or 100
+	el.inc = o.Increment or 1
+	el.suffix = o.Suffix or ""
+	el.Callback = o.Callback
+
+	local dec, i = 0, el.inc
+	while dec < 6 and math.abs(i - math.floor(i + 0.5)) > 1e-9 do
+		i = i * 10
+		dec = dec + 1
+	end
+	el.dec = dec
+
+	local function snap(v)
+		v = clamp(v, el.min, el.max)
+		if el.inc > 0 then
+			v = el.min + math.floor((v - el.min) / el.inc + 0.5) * el.inc
+			v = clamp(v, el.min, el.max)
+		end
+		return tonumber(string.format("%.6f", v))
+	end
+	el.Value = snap(o.Default or el.min)
+
+	local function fmt(v)
+		return string.format("%." .. dec .. "f", v) .. el.suffix
+	end
+	local widest = math.max(#fmt(el.min), #fmt(el.max))
+	el.boxW = clamp(widest * 7 + 14, 36, math.floor(W * 0.5))
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.valTxt = win:_D("Text", { Visible = false, Text = "", Color = "accent", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
+	el.bar = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(W, 4), Position = V0, ZIndex = 3 }, el.objs)
+	el.fill = win:_D("Square", { Visible = false, Filled = true, Color = "accent", Size = Vector2.new(0, 4), Position = V0, ZIndex = 4 }, el.objs)
+	el.knob = win:_D("Circle", { Visible = false, Filled = true, Color = "text", Radius = 6, NumSides = 20, Thickness = 1, Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:_Render()
+		self.label.Text = win:_Fit(self.title, 13, W - self.boxW - 8)
+		self.valTxt.Text = fmt(self.Value)
+	end
+
+	function el:Layout(x, y)
+		local range = self.max - self.min
+		local frac = range > 0 and (self.Value - self.min) / range or 0
+		local bx = x + W - self.boxW
+		self.valTxt.Text = fmt(self.Value)
+		self.label.Position = Vector2.new(x, y + 4)
+		self.valTxt.Position = Vector2.new(bx + self.boxW / 2, y + 5)
+		self.bar.Position = Vector2.new(x, y + 26)
+		self.fill.Position = Vector2.new(x, y + 26)
+		self.fill.Size = Vector2.new(math.max(0, frac * W), 4)
+		self.knob.Position = Vector2.new(x + frac * W, y + 28)
+	end
+
+	function el:_SetFromMouse(mx)
+		local t = clamp((mx - self.x) / W, 0, 1)
+		local nv = snap(self.min + t * (self.max - self.min))
+		if nv ~= self.Value then
+			self.Value = nv
+			self:Layout(self.x, self.y)
+			fire(self.Callback, self.Value)
+		end
+	end
+
+	function el:_Click(mx, my)
+		if my >= self.y + 16 and my <= self.y + 38 then
+			win.dragTarget = self
+			self:_SetFromMouse(mx)
+		end
+	end
+
+	function el:_Drag(mx) self:_SetFromMouse(mx) end
+
+	function el:SetValue(v, silent)
+		self.Value = snap(v)
+		self:Layout(self.x, self.y)
+		if not silent then fire(self.Callback, self.Value) end
+	end
+
+	function el:Get() return self.Value end
+	function el:_Save() return self.Value end
+	function el:_Load(v) if type(v) == "number" then self:SetValue(v) end end
+
+	el:_Render()
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Paragraph (text with a thin guide line on the left)
+----------------------------------------------------------------------
+
+function Groupbox:AddParagraph(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local el = newElement(self, "Paragraph", 30)
+	el.lockable = false
+	el.title = o.Title
+	el.text = tostring(o.Text or "")
+	el.lines = {}
+	el.count = 0
+	el.guide = win:_D("Square", { Visible = false, Filled = true, Color = "accentDim", Size = Vector2.new(2, 10), Position = V0, ZIndex = 3 })
+
+	local function ensureHead()
+		if el.title and not el.head then
+			el.head = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 })
+		end
+	end
+	ensureHead()
+
+	function el:_Rebuild(noLayout)
+		local wrapped = win:_Wrap(self.text, 12, W - 10)
+		self.count = #wrapped
+		for i = #self.lines + 1, self.count do
+			self.lines[i] = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Position = V0, ZIndex = 3 })
+		end
+		for i = 1, #self.lines do
+			self.lines[i].Text = wrapped[i] or ""
+		end
+		if self.head then self.head.Text = tostring(self.title) end
+		self.height = 4 + (self.title and 17 or 0) + self.count * 14 + 6
+		self.guide.Size = Vector2.new(2, math.max(4, self.height - 8))
+		if not noLayout then win:_Layout() end
+	end
+
+	function el:Layout(x, y)
+		local ly = y + 4
+		self.guide.Position = Vector2.new(x, y + 4)
+		if self.head then
+			self.head.Position = Vector2.new(x + 10, ly)
+		end
+		if self.title then ly = ly + 17 end
+		for i = 1, #self.lines do
+			self.lines[i].Position = Vector2.new(x + 10, ly + (i - 1) * 14)
+		end
+	end
+
+	function el:SetVisible(v)
+		self.guide.Visible = v
+		if self.head then self.head.Visible = v and self.title ~= nil end
+		for i, l in ipairs(self.lines) do
+			l.Visible = v and i <= self.count
+		end
+	end
+
+	function el:SetTitle(t)
+		self.title = t ~= nil and tostring(t) or nil
+		ensureHead()
+		self:_Rebuild()
+	end
+
+	function el:SetText(t)
+		self.text = tostring(t)
+		self:_Rebuild()
+	end
+
+	function el:SetValue(t) self:SetText(t) end
+	function el:Get() return self.text end
+
+	function el:Destroy()
+		pcall(function() self.guide:Remove() end)
+		if self.head then pcall(function() self.head:Remove() end) end
+		for _, l in ipairs(self.lines) do pcall(function() l:Remove() end) end
+		Element.Destroy(self)
+	end
+
+	el:_Rebuild(true)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Keybind
+----------------------------------------------------------------------
+
+function Groupbox:AddKeybind(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local T = win.Theme
+	local el = newElement(self, "Keybind", 28)
+	el.title = o.Title or "Keybind"
+	el.Mode = o.Mode or "Press"
+	el.Callback = o.Callback
+	el.Changed = o.ChangedCallback
+	el.State = false
+	el.listening = false
+	el.Key = parseKey(o.Default)
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.box = win:_D("Square", { Visible = false, Filled = true, Color = "field", Size = Vector2.new(64, 18), Position = V0, ZIndex = 3 }, el.objs)
+	el.bdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(64, 18), Position = V0, ZIndex = 4 }, el.objs)
+	el.txt = win:_D("Text", { Visible = false, Text = "", Color = "textDim", Size = 12, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, el.objs)
+
+	function el:Layout(x, y)
+		local bx = x + W - 64
+		self.label.Position = Vector2.new(x, y + 7)
+		self.box.Position = Vector2.new(bx, y + 5)
+		self.bdr.Position = Vector2.new(bx, y + 5)
+		self.txt.Position = Vector2.new(bx + 32, y + 8)
+	end
+
+	function el:_Render()
+		self.label.Text = win:_Fit(self.title, 13, W - 64 - 8)
+		if self.listening then
+			self.txt.Text = "..."
+			self.txt.Color = T.accent
+			self.bdr.Color = T.accent
+		else
+			self.txt.Text = win:_Fit("[" .. keyName(self.Key) .. "]", 12, 58)
+			self.txt.Color = T.textDim
+			self.bdr.Color = T.border
+		end
+	end
+
+	function el:_Click(mx, my)
+		if inRect(mx, my, self.x + W - 64, self.y + 5, 64, 18) then
+			win:_ClosePopup()
+			win:_BlurText()
+			self.listening = true
+			win:_BeginListen(self)
+			self:_Render()
+		end
+	end
+
+	function el:_OnRebind()
+		self.State = false
+	end
+
+	function el:_Trigger(down)
+		if win.textTarget or self.listening or self.locked then return end
+		if self.Mode == "Hold" then
+			self.State = down
+			fire(self.Callback, down)
+		elseif self.Mode == "Toggle" then
+			if down then
+				self.State = not self.State
+				fire(self.Callback, self.State)
+			end
+		elseif down then
+			fire(self.Callback, true)
+		end
+	end
+
+	function el:SetKey(k, silent)
+		self.Key = k
+		self:_Swallow()
+		self:_Render()
+		if not silent then fire(self.Changed, k) end
+	end
+
+	function el:SetValue(k, silent) self:SetKey(k, silent) end
+	function el:GetKey() return self.Key end
+	function el:GetState() return self.State end
+	function el:Get() return self.Key end
+	function el:_Save() return encodeKey(self.Key) end
+	function el:_Load(v)
+		local k, valid = decodeKey(v)
+		if valid then self:SetKey(k) end
+	end
+
+	attachBind(el, win)
+	el:_Render()
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Color picker (swatch on the left, label to its right)
+----------------------------------------------------------------------
+
+local PW, PH, CS = 130, 100, 5              -- palette size, cell size
+local COLS, ROWS = PW / CS, PH / CS         -- 26 x 20
+local ABW, HH = 14, 14                      -- alpha bar width, hue bar height
+local POP_H = 8 + PH + 8 + HH + 6 + 14 + 8
+local SW_W, SW_H = 24, 18                   -- swatch size
+
+function Groupbox:AddColorPicker(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local el = newElement(self, "ColorPicker", 28)
+	el.title = o.Title or "Color"
+	el.Callback = o.Callback
+	el.hasAlpha = o.Alpha ~= false
+	el.popW = 8 + PW + (el.hasAlpha and (8 + ABW) or 0) + 8
+	el.Transparency = el.hasAlpha and clamp(o.Transparency or 0, 0, 1) or 0
+	local c0 = o.Default or Color3.fromRGB(255, 255, 255)
+	el.h, el.s, el.v = c0:ToHSV()
+	el.h = math.min(el.h, 0.9999)
+	el.Value = c0
+	el.open = false
+	el.built = false
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title, Color = "text", Size = 13, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+	el.swBase = win:_D("Square", { Visible = false, Filled = true, Color = Color3.fromRGB(200, 200, 200), Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 3 }, el.objs)
+	el.swDark = {}
+	for r = 0, 2 do
+		for c = 0, 3 do
+			if (r + c) % 2 == 1 then
+				local d = win:_D("Square", { Visible = false, Filled = true, Color = Color3.fromRGB(140, 140, 140), Size = Vector2.new(6, 6), Position = V0, ZIndex = 4 }, el.objs)
+				table.insert(el.swDark, { obj = d, ox = c * 6, oy = r * 6 })
+			end
+		end
+	end
+	el.swatch = win:_D("Square", { Visible = false, Filled = true, Color = c0, Transparency = 1 - el.Transparency, Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 5 }, el.objs)
+	el.swBdr = win:_D("Square", { Visible = false, Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(SW_W, SW_H), Position = V0, ZIndex = 6 }, el.objs)
+
+	-- the swatch has its own transparency (the colour's alpha), so the lock dimming is applied on top of it
+	function el:_AfterLock(a)
+		self.swatch.Transparency = (1 - self.Transparency) * a
+	end
+
+	function el:_InBox(mx, my)
+		return inRect(mx, my, self.x, self.y, W, self.height)
+	end
+
+	function el:Layout(x, y)
+		self.label.Position = Vector2.new(x + SW_W + 8, y + 7)
+		self.swBase.Position = Vector2.new(x, y + 5)
+		for _, d in ipairs(self.swDark) do
+			d.obj.Position = Vector2.new(x + d.ox, y + 5 + d.oy)
+		end
+		self.swatch.Position = Vector2.new(x, y + 5)
+		self.swBdr.Position = Vector2.new(x, y + 5)
+		if self.open then self:_PlacePopup() end
+	end
+
+	-- popup construction (lazy) -------------------------------------
+	function el:_Build()
+		if self.built then return end
+		self.built = true
+		local function Dp(class, props)
+			props.Visible = false
+			props.Position = V0
+			return win:_D(class, props, self.pobjs)
+		end
+		local gray1, gray2 = Color3.fromRGB(200, 200, 200), Color3.fromRGB(140, 140, 140)
+		local black, white = Color3.fromRGB(0, 0, 0), Color3.fromRGB(255, 255, 255)
+
+		self.pbg = Dp("Square", { Filled = true, Color = "field", Size = Vector2.new(self.popW, POP_H), ZIndex = 20 })
+		self.pbdr = Dp("Square", { Filled = false, Color = "accentDim", Thickness = 1, Size = Vector2.new(self.popW, POP_H), ZIndex = 21 })
+
+		self.svCells = {}
+		for r = 1, ROWS do
+			self.svCells[r] = {}
+			for c = 1, COLS do
+				self.svCells[r][c] = Dp("Square", { Filled = true, Color = white, Size = Vector2.new(CS, CS), ZIndex = 22 })
+			end
+		end
+		self.hueCells = {}
+		for c = 1, COLS do
+			self.hueCells[c] = Dp("Square", { Filled = true, Color = Color3.fromHSV((c - 0.5) / COLS, 1, 1), Size = Vector2.new(CS, HH), ZIndex = 22 })
+		end
+
+		if self.hasAlpha then
+			self.aBase = Dp("Square", { Filled = true, Color = gray1, Size = Vector2.new(ABW, PH), ZIndex = 22 })
+			self.aDark, self.aCells = {}, {}
+			for r = 1, ROWS do
+				self.aDark[r] = Dp("Square", { Filled = true, Color = gray2, Size = Vector2.new(ABW / 2, CS), ZIndex = 23 })
+			end
+			for r = 1, ROWS do
+				self.aCells[r] = Dp("Square", { Filled = true, Color = self.Value, Transparency = 1 - (r - 1) / (ROWS - 1), Size = Vector2.new(ABW, CS), ZIndex = 24 })
+			end
+			self.aBdr = Dp("Square", { Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(ABW, PH), ZIndex = 25 })
+			self.aM1 = Dp("Square", { Filled = false, Color = black, Thickness = 1, Size = Vector2.new(ABW + 4, 6), ZIndex = 26 })
+			self.aM2 = Dp("Square", { Filled = false, Color = white, Thickness = 1, Size = Vector2.new(ABW + 2, 4), ZIndex = 27 })
+			self.trTxt = Dp("Text", { Text = "", Color = "textDim", Size = 11, Font = FONT, Center = true, ZIndex = 22 })
+		end
+
+		self.pvBase = Dp("Square", { Filled = true, Color = gray1, Size = Vector2.new(ABW, HH), ZIndex = 22 })
+		self.pvD1 = Dp("Square", { Filled = true, Color = gray2, Size = Vector2.new(ABW / 2, HH / 2), ZIndex = 23 })
+		self.pvD2 = Dp("Square", { Filled = true, Color = gray2, Size = Vector2.new(ABW / 2, HH / 2), ZIndex = 23 })
+		self.pvFill = Dp("Square", { Filled = true, Color = self.Value, Transparency = 1, Size = Vector2.new(ABW, HH), ZIndex = 24 })
+
+		self.svBdr = Dp("Square", { Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(PW, PH), ZIndex = 25 })
+		self.hueBdr = Dp("Square", { Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(PW, HH), ZIndex = 25 })
+		self.pvBdr = Dp("Square", { Filled = false, Color = "border", Thickness = 1, Size = Vector2.new(ABW, HH), ZIndex = 25 })
+
+		self.svM1 = Dp("Circle", { Filled = false, Color = black, Thickness = 1, Radius = 5, NumSides = 20, ZIndex = 26 })
+		self.svM2 = Dp("Circle", { Filled = false, Color = white, Thickness = 1, Radius = 4, NumSides = 20, ZIndex = 27 })
+		self.hueM1 = Dp("Square", { Filled = false, Color = black, Thickness = 1, Size = Vector2.new(6, HH + 4), ZIndex = 26 })
+		self.hueM2 = Dp("Square", { Filled = false, Color = white, Thickness = 1, Size = Vector2.new(4, HH + 2), ZIndex = 27 })
+
+		self.hexTxt = Dp("Text", { Text = "", Color = "text", Size = 11, Font = FONT, ZIndex = 22 })
+	end
+
+	function el:_PlacePopup()
+		local x, y = self.x, self.y
+		-- anchored under the swatch, kept inside the content area of the window
+		local px = math.min(x, win.x + win.w - 4 - self.popW)
+		px = math.max(win.x + SIDEBAR_W + 4, px)
+		local py = y + 28
+		local svX, svY = px + 8, py + 8
+		local abX = svX + PW + 8
+		local hueY = svY + PH + 8
+		local textY = hueY + HH + 6
+		self.px, self.py, self.svX, self.svY, self.abX, self.hueY = px, py, svX, svY, abX, hueY
+
+		self.pbg.Position = Vector2.new(px, py)
+		self.pbdr.Position = Vector2.new(px, py)
+		for r = 1, ROWS do
+			for c = 1, COLS do
+				self.svCells[r][c].Position = Vector2.new(svX + (c - 1) * CS, svY + (r - 1) * CS)
+			end
+		end
+		for c = 1, COLS do
+			self.hueCells[c].Position = Vector2.new(svX + (c - 1) * CS, hueY)
+		end
+
+		local pvX, pvY
+		if self.hasAlpha then
+			self.aBase.Position = Vector2.new(abX, svY)
+			for r = 1, ROWS do
+				self.aDark[r].Position = Vector2.new(abX + ((r - 1) % 2) * (ABW / 2), svY + (r - 1) * CS)
+				self.aCells[r].Position = Vector2.new(abX, svY + (r - 1) * CS)
+			end
+			self.aBdr.Position = Vector2.new(abX, svY)
+			pvX, pvY = abX, hueY
+		else
+			pvX, pvY = svX + PW - ABW, textY
+		end
+		self.pvBase.Position = Vector2.new(pvX, pvY)
+		self.pvD1.Position = Vector2.new(pvX, pvY)
+		self.pvD2.Position = Vector2.new(pvX + ABW / 2, pvY + HH / 2)
+		self.pvFill.Position = Vector2.new(pvX, pvY)
+		self.pvBdr.Position = Vector2.new(pvX, pvY)
+		self.svBdr.Position = Vector2.new(svX, svY)
+		self.hueBdr.Position = Vector2.new(svX, hueY)
+		self.hexTxt.Position = Vector2.new(svX, textY)
+		self:_PlaceMarkers()
+	end
+
+	function el:_PlaceMarkers()
+		local mx = self.svX + self.s * PW
+		local my = self.svY + (1 - self.v) * PH
+		self.svM1.Position = Vector2.new(mx, my)
+		self.svM2.Position = Vector2.new(mx, my)
+		local hx = self.svX + self.h * PW
+		self.hueM1.Position = Vector2.new(hx - 3, self.hueY - 2)
+		self.hueM2.Position = Vector2.new(hx - 2, self.hueY - 1)
+		if self.hasAlpha then
+			local ay = self.svY + self.Transparency * PH
+			self.aM1.Position = Vector2.new(self.abX - 2, ay - 3)
+			self.aM2.Position = Vector2.new(self.abX - 1, ay - 2)
+		end
+	end
+
+	function el:_PaintSV()
+		for r = 1, ROWS do
+			local v = 1 - (r - 1) / (ROWS - 1)
+			for c = 1, COLS do
+				self.svCells[r][c].Color = Color3.fromHSV(self.h, (c - 1) / (COLS - 1), v)
+			end
+		end
+	end
+
+	function el:_Sync()
+		local c = Color3.fromHSV(self.h, self.s, self.v)
+		self.Value = c
+		self.swatch.Color = c
+		self.swatch.Transparency = (1 - self.Transparency) * (self.locked and LOCK_ALPHA or 1)
+		if not (self.built and self.open) then return end
+		self.pvFill.Color = c
+		self.pvFill.Transparency = 1 - self.Transparency
+		self.hexTxt.Text = string.format("#%02X%02X%02X",
+			math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+		if self.hasAlpha then
+			for r = 1, ROWS do self.aCells[r].Color = c end
+			self.trTxt.Text = string.format("Transp: %d%%", math.floor(self.Transparency * 100 + 0.5))
+			-- centered at a fixed point, so no text measuring is needed
+			self.trTxt.Position = Vector2.new(self.svX + PW - 30, self.hueY + HH + 6)
+		end
+		self:_PlaceMarkers()
+	end
+
+	-- popup protocol -------------------------------------------------
+	function el:_PopupOpen()
+		win:_OpenPopup(self)
+		self:_Build()
+		self.open = true
+		self:_PlacePopup()
+		self:_PaintSV()
+		for _, obj in ipairs(self.pobjs) do obj.Visible = true end
+		self:_Sync()
+	end
+
+	function el:_PopupClose()
+		self.open = false
+		self._pd = nil
+		for _, obj in ipairs(self.pobjs) do obj.Visible = false end
+	end
+
+	-- x, y, w, h of the open popup (used by the input blocker)
+	function el:_PopupRect()
+		if not self.open or not self.px then return nil end
+		return self.px, self.py, self.popW, POP_H
+	end
+
+	function el:_PopupHit(mx, my)
+		return self.open and inRect(mx, my, self.px, self.py, self.popW, POP_H)
+	end
+
+	function el:_PopupClick(mx, my)
+		if inRect(mx, my, self.svX, self.svY, PW, PH) then
+			self._pd = "sv"
+		elseif inRect(mx, my, self.svX, self.hueY, PW, HH) then
+			self._pd = "hue"
+		elseif self.hasAlpha and inRect(mx, my, self.abX, self.svY, ABW, PH) then
+			self._pd = "alpha"
+		else
+			return
+		end
+		win.dragTarget = self
+		self:_Drag(mx, my)
+	end
+
+	function el:_Drag(mx, my)
+		local mode = self._pd
+		if mode == "sv" then
+			self.s = clamp((mx - self.svX) / PW, 0, 1)
+			self.v = 1 - clamp((my - self.svY) / PH, 0, 1)
+		elseif mode == "hue" then
+			self.h = clamp((mx - self.svX) / PW, 0, 0.9999)
+			self:_PaintSV()
+		elseif mode == "alpha" then
+			self.Transparency = clamp((my - self.svY) / PH, 0, 1)
+		else
+			return
+		end
+		self:_Sync()
+		fire(self.Callback, self.Value, self.Transparency)
+	end
+
+	function el:_Release() self._pd = nil end
+
+	function el:_Click()
+		if self.open then win:_ClosePopup() else self:_PopupOpen() end
+	end
+
+	-- public ----------------------------------------------------------
+	function el:SetColor(c, transparency, silent)
+		local h, s, v = c:ToHSV()
+		if s > 0 and v > 0 then self.h = math.min(h, 0.9999) end
+		self.s, self.v = s, v
+		if transparency ~= nil and self.hasAlpha then self.Transparency = clamp(transparency, 0, 1) end
+		if self.open then self:_PaintSV() end
+		self:_Sync()
+		if not silent then fire(self.Callback, self.Value, self.Transparency) end
+	end
+
+	function el:SetTransparency(t, silent)
+		if not self.hasAlpha then return end
+		self.Transparency = clamp(t, 0, 1)
+		self:_Sync()
+		if not silent then fire(self.Callback, self.Value, self.Transparency) end
+	end
+
+	function el:SetValue(c, silent) self:SetColor(c, nil, silent) end
+	function el:Get() return self.Value, self.Transparency end
+
+	function el:_Save()
+		return { self.h, self.s, self.v, self.Transparency }
+	end
+
+	function el:_Load(a)
+		if type(a) ~= "table" then return end
+		self.h = clamp(tonumber(a[1]) or self.h, 0, 0.9999)
+		self.s = clamp(tonumber(a[2]) or self.s, 0, 1)
+		self.v = clamp(tonumber(a[3]) or self.v, 0, 1)
+		if self.hasAlpha then self.Transparency = clamp(tonumber(a[4]) or 0, 0, 1) end
+		if self.open then self:_PaintSV() end
+		self:_Sync()
+		fire(self.Callback, self.Value, self.Transparency)
+	end
+
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Add* shortcuts (Tab -> unnamed full-width box, Window -> implicit "Main" tab)
+----------------------------------------------------------------------
+
+for _, name in ipairs(ADD_METHODS) do
+	Tab[name] = function(self, ...)
+		local s = self:_Default()
+		return s[name](s, ...)
+	end
+	Window[name] = function(self, ...)
+		local s = self:_Implicit():_Default()
+		return s[name](s, ...)
+	end
+end
+
+----------------------------------------------------------------------
+-- Config manager
+----------------------------------------------------------------------
+
+local Manager = {}
+Manager.__index = Manager
+
+local function newManager(window, store, noun)
+	local self = setmetatable({}, Manager)
+	self.window = window
+	self.store = store
+	self.noun = noun
+	return self
+end
+
+function Manager:List()
+	return self.store:List()
+end
+
+function Manager:Exists(name)
+	local n = cleanName(name)
+	return n ~= nil and self.store:Exists(n)
+end
+
+function Manager:Save(name, overwrite)
+	local n, err = cleanName(name)
+	if not n then return false, err end
+	local exists = self.store:Exists(n)
+	if overwrite then
+		if not exists then return false, "No " .. self.noun .. " named '" .. n .. "'" end
+	elseif exists then
+		return false, "'" .. n .. "' already exists - select it and use Overwrite"
+	end
+	local ok, werr = self.store:Write(n, self.collect())
+	if not ok then return false, werr end
+	return true, (overwrite and "Overwrote " or "Created ") .. self.noun .. " '" .. n .. "'"
+end
+
+function Manager:Load(name)
+	local n, err = cleanName(name)
+	if not n then return false, err end
+	local data, rerr = self.store:Read(n)
+	if not data then return false, rerr end
+	local ok, res = self.apply(data)
+	if not ok then return false, res end
+	fire(self.OnLoad, n)
+	return true, ("Loaded %s '%s'%s"):format(self.noun, n, res and (" (" .. tostring(res) .. " values)") or "")
+end
+
+function Manager:Delete(name)
+	local n, err = cleanName(name)
+	if not n then return false, err end
+	if not self.store:Exists(n) then return false, "No " .. self.noun .. " named '" .. n .. "'" end
+	local ok, derr = self.store:Delete(n)
+	if not ok then return false, derr end
+	if self.store:RawAutoload() == n then self.store:ClearAutoload() end
+	return true, "Deleted " .. self.noun .. " '" .. n .. "'"
+end
+
+function Manager:Rename(old, new)
+	local o, e1 = cleanName(old)
+	if not o then return false, e1 end
+	local n, e2 = cleanName(new)
+	if not n then return false, e2 end
+	if o == n then return false, "Enter a different name" end
+	if not self.store:Exists(o) then return false, "No " .. self.noun .. " named '" .. o .. "'" end
+	if self.store:Exists(n) then return false, "'" .. n .. "' already exists" end
+	local data, err = self.store:Read(o)
+	if not data then return false, err end
+	local ok, werr = self.store:Write(n, data)
+	if not ok then return false, werr end
+	local wasAuto = self.store:RawAutoload() == o
+	self.store:Delete(o)
+	if wasAuto then self.store:SetAutoload(n) end
+	return true, ("Renamed '%s' to '%s'"):format(o, n)
+end
+
+function Manager:GetAutoload()
+	return self.store:GetAutoload()
+end
+
+function Manager:SetAutoload(name)
+	local n, err = cleanName(name)
+	if not n then return false, err end
+	if not self.store:Exists(n) then return false, "No " .. self.noun .. " named '" .. n .. "'" end
+	local ok, werr = self.store:SetAutoload(n)
+	if not ok then return false, werr end
+	return true, "'" .. n .. "' will load automatically"
+end
+
+function Manager:ClearAutoload()
+	local ok, err = self.store:ClearAutoload()
+	if not ok then return false, err end
+	return true, "Autoload cleared"
+end
+
+function Manager:LoadAutoload()
+	local name = self.store:GetAutoload()
+	if not name then return false end
+	local ok, msg = self:Load(name)
+	if self.say then
+		self.say(ok, ok and ("Autoloaded " .. self.noun .. " '" .. name .. "'") or msg)
+	end
+	return ok
+end
+
+-- builds the create / load / overwrite / delete / rename / autoload UI:
+-- actions on the left, status + autoload on the right
+function Manager:BuildStoreUI(tab)
+	local noun = self.noun
+	local Noun = noun:sub(1, 1):upper() .. noun:sub(2)
+
+	local actions = tab:AddLeftGroupbox(Noun .. "s")
+	local info = tab:AddRightGroupbox("Status")
+	local autoBox = tab:AddRightGroupbox("Autoload")
+
+	local status = info:AddParagraph({ Text = FS.supported() and "Ready" or NO_FS })
+	local function say(ok, msg)
+		status:SetText(ok and tostring(msg) or ("Error: " .. tostring(msg)))
+	end
+	self.say = say
+
+	local nameInput = actions:AddInput({ Title = "Name", Placeholder = "type a name, press Enter", MaxLength = 32 })
+	local list
+
+	local function refresh(selectName)
+		list:SetOptions(self.store:List(), true)
+		if selectName then list:SetValue(selectName, true) end
+	end
+	local function selected()
+		local v = list:Get()
+		if v == nil then say(false, "Select a " .. noun .. " from the list first") end
+		return v
+	end
+
+	actions:AddButton({
+		Title = "Create " .. noun,
+		Callback = function()
+			local ok, msg = self:Save(nameInput:Get())
+			say(ok, msg)
+			if ok then
+				refresh(cleanName(nameInput:Get()))
+				nameInput:SetValue("", true)
+			end
+		end,
+	})
+
+	list = actions:AddDropdown({ Title = Noun .. " list", Options = self.store:List(), Searchable = true })
+
+	actions:AddButton({
+		Title = "Load " .. noun,
+		Callback = function()
+			local sel = selected()
+			if sel then say(self:Load(sel)) end
+		end,
+	})
+	actions:AddConfirmButton({
+		Title = "Overwrite " .. noun,
+		ConfirmTitle = "Click again to overwrite",
+		Callback = function()
+			local sel = selected()
+			if sel then say(self:Save(sel, true)) end
+		end,
+	})
+	actions:AddConfirmButton({
+		Title = "Delete " .. noun,
+		ConfirmTitle = "Click again to delete",
+		Callback = function()
+			local sel = selected()
+			if not sel then return end
+			say(self:Delete(sel))
+			refresh()
+			if self.updateAuto then self.updateAuto() end
+		end,
+	})
+	actions:AddButton({
+		Title = "Rename selected",
+		Callback = function()
+			local sel = selected()
+			if not sel then return end
+			local newName = nameInput:Get()
+			local ok, msg = self:Rename(sel, newName)
+			say(ok, msg)
+			if ok then
+				refresh(cleanName(newName))
+				nameInput:SetValue("", true)
+				if self.updateAuto then self.updateAuto() end
+			end
+		end,
+	})
+	actions:AddButton({
+		Title = "Refresh list",
+		Callback = function()
+			refresh()
+			say(true, "Found " .. #self.store:List() .. " " .. noun .. "(s)")
+		end,
+	})
+
+	local autoPara = autoBox:AddParagraph({ Title = "Current", Text = self.store:GetAutoload() or "None" })
+	self.updateAuto = function()
+		autoPara:SetText(self.store:GetAutoload() or "None")
+	end
+	autoBox:AddButton({
+		Title = "Set selected as autoload",
+		Callback = function()
+			local sel = selected()
+			if not sel then return end
+			say(self:SetAutoload(sel))
+			self.updateAuto()
+		end,
+	})
+	autoBox:AddButton({
+		Title = "Clear autoload",
+		Callback = function()
+			say(self:ClearAutoload())
+			self.updateAuto()
+		end,
+	})
+
+	self.refresh = refresh
+	return actions, say
+end
+
+function Library:CreateConfigManager(window, opts)
+	opts = opts or {}
+	local mgr = newManager(window, Store.new(opts.Folder or "PhemonazUI", "configs"), "config")
+	mgr.OnLoad = opts.OnLoad
+	mgr.ignore = {}
+	for _, f in ipairs(opts.Ignore or {}) do mgr.ignore[f] = true end
+
+	-- the selected theme preset is stored in every config
+	mgr.collect = function()
+		local flags = {}
+		for flag, el in pairs(window.Flags) do
+			if not mgr.ignore[flag] and el._Save then
+				local ok, v = pcall(el._Save, el)
+				if ok and v ~= nil then flags[flag] = v end
+			end
+		end
+		return { version = 1, flags = flags, theme = window.themeName }
+	end
+
+	mgr.apply = function(data)
+		local flags = type(data) == "table" and data.flags
+		if type(flags) ~= "table" then return false, "Invalid config format" end
+		-- theme first, so nothing loaded afterwards is repainted over
+		if type(data.theme) == "string" and Library.ThemePresets[data.theme] then
+			window:SetThemePreset(data.theme, true) -- true: don't overwrite the saved startup theme
+			if window.themeDropdown then window.themeDropdown:SetValue(data.theme, true) end
+		end
+		local n = 0
+		for flag, v in pairs(flags) do
+			local el = window.Flags[flag]
+			if el and el._Load and not mgr.ignore[flag] then
+				if pcall(el._Load, el, v) then n = n + 1 end
+			end
+		end
+		return true, n
+	end
+
+	function mgr:BuildUI(tab)
+		self:BuildStoreUI(tab)
+	end
+
+	window.ConfigManager = mgr
+	return mgr
+end
+
+----------------------------------------------------------------------
+-- Settings tab: theme dropdown + config system
+--
+-- startup order: saved theme (<folder>/themes.txt) -> autoloaded config.
+-- The theme file is only read once at startup; after that the player picks
+-- freely (each pick is written back to themes.txt), and an autoloaded
+-- config (which also carries a theme) gets the final say.
+-- (a saved theme name that no longer exists, e.g. "Default" / "Light", is ignored)
+----------------------------------------------------------------------
+
+function Window:AddSettingsTab(opts)
+	opts = opts or {}
+	local root = opts.Folder or "PhemonazUI"
+	local settingsPath = root .. "/settings.json"
+	local themePath = root .. "/themes.txt"
+	local tab = self:AddTab(opts.Name or "Settings")
+
+	-- the menu key (changed from the sidebar) is remembered between runs
+	local saved = readJSON(settingsPath)
+	if saved and saved.menuKey then
+		local k, valid = decodeKey(saved.menuKey)
+		if valid then self:SetToggleKey(k) end
+	end
+	self.onMenuKeyChanged = function(k)
+		writeJSON(root, settingsPath, { menuKey = encodeKey(k) })
+	end
+
+	-- restore the saved theme once (no re-save needed)
+	local savedTheme = readText(themePath)
+	if savedTheme and Library.ThemePresets[savedTheme] then
+		self:SetThemePreset(savedTheme, true)
+	end
+	-- from here on every manual pick is saved
+	self.onThemeChanged = function(name)
+		writeText(root, themePath, name)
+	end
+
+	local themeBox = tab:AddRightGroupbox("Theme")
+	self.themeDropdown = themeBox:AddDropdown({
+		Title = "Theme",
+		Options = Library.ThemePresetOrder,
+		Default = self.themeName or "Dark",
+		MaxVisible = 8,
+		Callback = function(name) self:SetThemePreset(name) end,
+	})
+
+	local config = Library:CreateConfigManager(self, { Folder = root, Ignore = opts.Ignore, OnLoad = opts.OnConfigLoad })
+	config:BuildUI(tab)
+
+	if opts.Autoload ~= false then
+		task.defer(function()
+			if self._destroyed then return end
+			config:LoadAutoload() -- runs after the saved theme, so the config's theme wins
+		end)
+	end
+
+	return { Tab = tab, Config = config }
+end
+
+return Library
