@@ -104,7 +104,7 @@ local GAP = 10       -- between groupboxes
 local PAD = 10       -- groupbox edge -> element content
 local GB_HEAD = 30   -- titled groupbox header height
 local V0 = Vector2.new(0, 0)
-local LOCK_ALPHA = 0.4 -- opacity of a locked element
+local LOCK_ALPHA = 0.3 -- opacity of a locked element
 local KB_W = 54        -- key chip width of the keybind toggle
 
 -- gradient band counts (more bands = smoother, but more Drawing objects)
@@ -2553,7 +2553,7 @@ local function paintPill(win, el)
 		el.pL.Color, el.pR.Color, el.pM.Color = T.toggle_off, T.toggle_off, T.toggle_off
 		el.knob.Color = T.textDim
 	end
-	el.label.Color = el.Value and T.text or T.textDim
+		el.label.Color = el.Value and T.text or T.text:Lerp(T.textDim, 0.2)
 end
 
 -- x = left edge of the pill, y = top of the element row
