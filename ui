@@ -4100,6 +4100,7 @@ function Groupbox:AddCardSelect(o)
 	el.hovered = nil
 	el.cardW = math.floor((W - CARD_GAP * (el.cols - 1)) / el.cols)
 	el.pvH = el.cardH - 46
+	el.fit = (o.ImageFit == "Contain") and "Contain" or "Fill"
 
 	el.label = win:_D("Text", { Visible = false, Text = el.title and tostring(el.title) or "", Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
 
@@ -4158,9 +4159,9 @@ function Groupbox:AddCardSelect(o)
 		local w, h
 		local sz = c.data.ImageSize
 		if typeof(sz) == "Vector2" then
-			w, h = sz.X, sz.Y
-		else
-			local maxW, maxH = pvW - 16, pvH - 12
+			w, h = sz.X, sz.Y                       -- exact size set on the card
+		elseif self.fit == "Contain" then
+			local maxW, maxH = pvW - 16, pvH - 12   -- old behaviour: keep aspect ratio, centred
 			if c.iw and c.ih then
 				local sc = math.min(maxW / c.iw, maxH / c.ih)
 				w, h = math.max(1, math.floor(c.iw * sc)), math.max(1, math.floor(c.ih * sc))
@@ -4168,6 +4169,8 @@ function Groupbox:AddCardSelect(o)
 				local sc = math.min(maxW, maxH)
 				w, h = sc, sc
 			end
+		else
+			w, h = pvW, pvH                         -- Fill: cover the whole preview frame
 		end
 		d.Size = Vector2.new(w, h)
 		d.Position = Vector2.new(c.cx + 6 + math.floor((pvW - w) / 2), c.cy + 6 + math.floor((pvH - h) / 2))
