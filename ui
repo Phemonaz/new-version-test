@@ -1186,6 +1186,7 @@ function Window:_PaintChrome()
 	end
 	for i, s in ipairs(self.topStrips) do
 		s.Color = T.accent:Lerp(T.accent2, (i - 1) / (N_TOP - 1))
+		s.Transparency = 0.5
 	end
 	self.sbLine.Color = T.border
 	self.sbHeadLine.Color = T.border
@@ -1712,7 +1713,7 @@ function Window:_Layout()
 		s.Position = Vector2.new(ix, y + 1 + y0)
 		s.Size = Vector2.new(SIDEBAR_W - 1, math.max(1, bh))
 	end
-	for i, s in ipairs(self.topStrips) do
+	
 		local x0, bw = band(i, N_TOP, iw)
 		s.Position = Vector2.new(ix + x0, y + 1)
 		s.Size = Vector2.new(bw, 2)
