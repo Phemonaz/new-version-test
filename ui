@@ -1049,9 +1049,6 @@ function Library:CreateWindow(opts)
 	for i = 1, N_SB do
 		self.sbStrips[i] = C("Square", { Visible = true, Filled = true, Color = T.header, Size = V0, Position = V0, ZIndex = 2 })
 	end
-	for i = 1, N_TOP do
-		self.topStrips[i] = C("Square", { Visible = true, Filled = true, Color = T.accent, Size = V0, Position = V0, ZIndex = 5 })
-	end
 	self.sbLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
 	self.sbHeadLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
 	self.tbLine = C("Square", { Visible = true, Filled = true, Color = T.border, Size = V0, Position = V0, ZIndex = 3 })
@@ -1183,8 +1180,6 @@ function Window:_PaintChrome()
 	end
 	for i, s in ipairs(self.sbStrips) do
 		s.Color = T.header:Lerp(T.header2, (i - 1) / (N_SB - 1))
-	end
-		s.Color = T.accent:Lerp(T.accent2, (i - 1) / (N_TOP - 1))
 	end
 	self.sbLine.Color = T.border
 	self.sbHeadLine.Color = T.border
@@ -1710,11 +1705,6 @@ function Window:_Layout()
 		local y0, bh = band(i, N_SB, ih)
 		s.Position = Vector2.new(ix, y + 1 + y0)
 		s.Size = Vector2.new(SIDEBAR_W - 1, math.max(1, bh))
-	end
-	
-		local x0, bw = band(i, N_TOP, iw)
-		s.Position = Vector2.new(ix + x0, y + 1)
-		s.Size = Vector2.new(bw, 2)
 	end
 	self.sbLine.Position = Vector2.new(x + SIDEBAR_W, y + 3)
 	self.sbLine.Size = Vector2.new(1, math.max(1, ih - 2))
