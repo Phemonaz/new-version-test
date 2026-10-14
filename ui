@@ -1186,7 +1186,7 @@ function Window:_PaintChrome()
 	end
 	for i, s in ipairs(self.topStrips) do
 		s.Color = T.accent:Lerp(T.accent2, (i - 1) / (N_TOP - 1))
-		s.Transparency = 0.5
+		s.Transparency = 1
 	end
 	self.sbLine.Color = T.border
 	self.sbHeadLine.Color = T.border
