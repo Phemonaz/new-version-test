@@ -126,7 +126,7 @@ Element.__index = Element
 local ADD_METHODS = {
 	"AddToggle", "AddKeybindToggle", "AddButton", "AddConfirmButton", "AddDropdown", "AddMultiDropdown",
 	"AddInput", "AddSlider", "AddParagraph", "AddKeybind",
-	"AddColorPicker", "AddDivider",
+	"AddColorPicker", "AddDivider", "AddCardSelect",
 }
 
 ----------------------------------------------------------------------
@@ -3979,6 +3979,401 @@ function Groupbox:AddColorPicker(o)
 		fire(self.Callback, self.Value, self.Transparency)
 	end
 
+	register(el, o)
+	return self:_Add(el)
+end
+
+----------------------------------------------------------------------
+-- Card select
+-- A grid of selectable cards (image + title + subtitle), like a skin / weapon picker.
+-- Only one card is selected at a time. Cards that share a Group (even across different
+-- AddCardSelect elements) unselect each other, so several labelled sections behave as one list.
+--
+-- Options:
+--   Title        small section label above the grid (optional)
+--   Cards        { { Title = "glock-18", Subtitle = "3 skins", Image = "rbxassetid://..." or url or file,
+--                    Value = <anything, defaults to Title>, ImageSize = Vector2 (optional),
+--                    Callback = function(value, card) (optional) }, ... }
+--   Columns      cards per row (default 3)
+--   CardHeight   height of one card (default 100)
+--   Group        string; elements with the same Group share one selection
+--   Default      Value (or Title) of the card that starts selected
+--   AllowDeselect  clicking the selected card again unselects it (default false)
+--   Callback     function(value, card): fired on every click, so you can open a page / tab
+--   Locked, Flag
+-- Methods: Get() value, GetCard(), SetValue(v, silent), SetCards(list, keepSelection),
+--          UpdateCard(valueOrIndex, { Title, Subtitle, Image, Value }), Lock()/Unlock()
+-- PNG images keep their aspect ratio automatically; other formats are fitted as a square
+-- unless the card has ImageSize.
+----------------------------------------------------------------------
+
+local CARD_GAP = 8
+
+-- width / height from a PNG header (nil for other formats)
+local function pngSize(b)
+	if type(b) ~= "string" or #b < 24 or b:sub(2, 4) ~= "PNG" then return nil end
+	local function u32(i)
+		return b:byte(i) * 16777216 + b:byte(i + 1) * 65536 + b:byte(i + 2) * 256 + b:byte(i + 3)
+	end
+	local w, h = u32(17), u32(21)
+	if w > 0 and h > 0 then return w, h end
+	return nil
+end
+
+function Groupbox:AddCardSelect(o)
+	o = o or {}
+	local win, W = self.window, self.cw
+	local T = win.Theme
+	local el = newElement(self, "CardSelect", 40)
+	el.title = o.Title
+	el.cols = math.max(1, math.floor(o.Columns or 3))
+	el.cardH = o.CardHeight or 100
+	el.group = o.Group
+	el.allowDeselect = o.AllowDeselect == true
+	el.Callback = o.Callback
+	el.cardData = o.Cards or {}
+	el.cards = {}
+	el.selected = nil
+	el.hovered = nil
+	el.cardW = math.floor((W - CARD_GAP * (el.cols - 1)) / el.cols)
+	el.pvH = el.cardH - 46
+
+	el.label = win:_D("Text", { Visible = false, Text = el.title and tostring(el.title) or "", Color = "textDim", Size = 11, Font = FONT, Position = V0, ZIndex = 3 }, el.objs)
+
+	if el.group then
+		win.cardGroups = win.cardGroups or {}
+		win.cardGroups[el.group] = win.cardGroups[el.group] or {}
+		table.insert(win.cardGroups[el.group], el)
+	end
+
+	function el:_Top() return self.title and 20 or 2 end
+
+	function el:_Recalc()
+		local rows = math.ceil(#self.cards / self.cols)
+		self.height = self:_Top() + rows * self.cardH + math.max(0, rows - 1) * CARD_GAP + 8
+	end
+
+	function el:_ValueOf(c)
+		if c.data.Value ~= nil then return c.data.Value end
+		return c.data.Title
+	end
+
+	function el:_SetTexts(c)
+		local inner = self.cardW - 16
+		c.title.Text = win:_Fit(tostring(c.data.Title or ""), 12, inner)
+		c.sub.Text = win:_Fit(tostring(c.data.Subtitle or ""), 11, inner)
+	end
+
+	function el:_PaintCard(c)
+		local sel = self.selected == c.index
+		local hov = self.hovered == c.index
+		local bgc = sel and T.field:Lerp(T.accent, 0.16) or (hov and T.field:Lerp(T.text, 0.06) or T.field)
+		c.bg.Color = bgc
+		c.bdr.Color = sel and T.accent or (hov and T.border:Lerp(T.accent2, 0.6) or T.border)
+		c.pv.Color = T.bg
+		c.title.Color = sel and T.text or T.text:Lerp(T.textDim, 0.25)
+		c.sub.Color = T.textDim
+		c.ph.Color = T.textDim
+		-- gradient underline only shows on the selected card (otherwise it blends into the card)
+		c.ulA.Color = sel and T.accent or bgc
+		c.ulB.Color = sel and T.accent2 or bgc
+	end
+
+	function el:_PaintAll()
+		for _, c in ipairs(self.cards) do self:_PaintCard(c) end
+	end
+
+	function el:_ApplyTheme()
+		self.label.Color = T.textDim
+		self:_PaintAll()
+	end
+
+	function el:_PlaceImage(c)
+		local d = c.img
+		if not d or not c.cx then return end
+		local pvW, pvH = self.cardW - 12, self.pvH
+		local w, h
+		local sz = c.data.ImageSize
+		if typeof(sz) == "Vector2" then
+			w, h = sz.X, sz.Y
+		else
+			local maxW, maxH = pvW - 16, pvH - 12
+			if c.iw and c.ih then
+				local sc = math.min(maxW / c.iw, maxH / c.ih)
+				w, h = math.max(1, math.floor(c.iw * sc)), math.max(1, math.floor(c.ih * sc))
+			else
+				local sc = math.min(maxW, maxH)
+				w, h = sc, sc
+			end
+		end
+		d.Size = Vector2.new(w, h)
+		d.Position = Vector2.new(c.cx + 6 + math.floor((pvW - w) / 2), c.cy + 6 + math.floor((pvH - h) / 2))
+	end
+
+	function el:_DropImage(c)
+		local d = c.img
+		if not d then return end
+		c.img = nil
+		for i = #self.objs, 1, -1 do
+			if self.objs[i] == d then table.remove(self.objs, i) break end
+		end
+		pcall(function() d:Remove() end)
+	end
+
+	function el:_LoadImage(c)
+		self:_DropImage(c)
+		local src = c.data.Image
+		if src == nil or src == "" then
+			c.ph.Text = "No image"
+			return
+		end
+		c.ph.Text = "..."
+		task.spawn(function()
+			local bytes = loadImageBytes(src)
+			if self.destroyed or win._destroyed or c.dead or c.data.Image ~= src then return end
+			if not bytes then
+				c.ph.Text = "No image"
+				return
+			end
+			local ok, d = pcall(function() return Drawing.new("Image") end)
+			if not ok or not d then c.ph.Text = "No image" return end
+			d.Visible = false
+			d.Transparency = 1
+			d.ZIndex = 7
+			if not pcall(function() d.Data = bytes end) then
+				pcall(function() d:Remove() end)
+				c.ph.Text = "No image"
+				return
+			end
+			table.insert(win.all, d)
+			table.insert(self.objs, d)
+			c.img = d
+			c.iw, c.ih = pngSize(bytes)
+			c.ph.Text = ""
+			d.Transparency = self.locked and LOCK_ALPHA or 1
+			self:_PlaceImage(c)
+			d.Visible = self._inView
+		end)
+	end
+
+	function el:_Clear()
+		for _, c in ipairs(self.cards) do c.dead = true end
+		for i = #self.objs, 1, -1 do
+			local obj = self.objs[i]
+			if obj ~= self.label then
+				pcall(function() obj:Remove() end)
+				table.remove(self.objs, i)
+			end
+		end
+		self.cards = {}
+	end
+
+	function el:_Build()
+		self:_Clear()
+		local cw, ch, pvH = self.cardW, self.cardH, self.pvH
+		local half = math.floor((cw - 2) / 2)
+		for i, d in ipairs(self.cardData) do
+			local c = { data = d, index = i }
+			c.bg = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(cw, ch), Position = V0, ZIndex = 3 }, self.objs)
+			c.pv = win:_D("Square", { Visible = false, Filled = true, Color = T.bg, Size = Vector2.new(cw - 12, pvH), Position = V0, ZIndex = 4 }, self.objs)
+			c.ph = win:_D("Text", { Visible = false, Text = "", Color = T.textDim, Size = 11, Font = FONT, Center = true, Position = V0, ZIndex = 5 }, self.objs)
+			c.title = win:_D("Text", { Visible = false, Text = "", Color = T.text, Size = 12, Font = FONT, Position = V0, ZIndex = 5 }, self.objs)
+			c.sub = win:_D("Text", { Visible = false, Text = "", Color = T.textDim, Size = 11, Font = FONT, Position = V0, ZIndex = 5 }, self.objs)
+			c.ulA = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(half, 2), Position = V0, ZIndex = 6 }, self.objs)
+			c.ulB = win:_D("Square", { Visible = false, Filled = true, Color = T.field, Size = Vector2.new(cw - 2 - half, 2), Position = V0, ZIndex = 6 }, self.objs)
+			c.bdr = win:_D("Square", { Visible = false, Filled = false, Color = T.border, Thickness = 1, Size = Vector2.new(cw, ch), Position = V0, ZIndex = 6 }, self.objs)
+			self.cards[i] = c
+			self:_SetTexts(c)
+			self:_LoadImage(c)
+		end
+		self:_Recalc()
+		self:_PaintAll()
+		if self.locked then self:_ApplyLock() end
+	end
+
+	function el:Layout(x, y)
+		local cw, ch, pvH = self.cardW, self.cardH, self.pvH
+		local half = math.floor((cw - 2) / 2)
+		self.label.Position = Vector2.new(x, y + 3)
+		for i, c in ipairs(self.cards) do
+			local col = (i - 1) % self.cols
+			local row = math.floor((i - 1) / self.cols)
+			local cx = x + col * (cw + CARD_GAP)
+			local cy = y + self:_Top() + row * (ch + CARD_GAP)
+			c.cx, c.cy = cx, cy
+			c.bg.Position = Vector2.new(cx, cy)
+			c.bdr.Position = Vector2.new(cx, cy)
+			c.pv.Position = Vector2.new(cx + 6, cy + 6)
+			c.ph.Position = Vector2.new(cx + 6 + (cw - 12) / 2, cy + 6 + pvH / 2 - 6)
+			c.title.Position = Vector2.new(cx + 8, cy + 6 + pvH + 6)
+			c.sub.Position = Vector2.new(cx + 8, cy + 6 + pvH + 20)
+			c.ulA.Position = Vector2.new(cx + 1, cy + ch - 3)
+			c.ulB.Position = Vector2.new(cx + 1 + half, cy + ch - 3)
+			self:_PlaceImage(c)
+		end
+	end
+
+	function el:_CardAt(mx, my)
+		for i, c in ipairs(self.cards) do
+			if c.cx and inRect(mx, my, c.cx, c.cy, self.cardW, self.cardH) then return i end
+		end
+		return nil
+	end
+
+	-- selection ---------------------------------------------------------
+	function el:_ClearSelection()
+		if self.selected == nil then return end
+		self.selected = nil
+		self:_PaintAll()
+	end
+
+	function el:_Apply(i, silent)
+		local c = self.cards[i]
+		if not c then return end
+		self.selected = i
+		-- cards in the same group unselect each other
+		if self.group and win.cardGroups and win.cardGroups[self.group] then
+			for _, other in ipairs(win.cardGroups[self.group]) do
+				if other ~= self then other:_ClearSelection() end
+			end
+		end
+		self:_PaintAll()
+		if not silent then
+			local v = self:_ValueOf(c)
+			fire(c.data.Callback, v, c.data)
+			fire(self.Callback, v, c.data)
+		end
+	end
+
+	function el:_Click(mx, my)
+		local i = self:_CardAt(mx, my)
+		if not i then return end
+		if self.allowDeselect and self.selected == i then
+			self:_ClearSelection()
+			fire(self.Callback, nil, nil)
+			return
+		end
+		self:_Apply(i, false)
+	end
+
+	-- public ------------------------------------------------------------
+	function el:Get()
+		local c = self.selected and self.cards[self.selected]
+		if c then return self:_ValueOf(c) end
+		return nil
+	end
+
+	function el:GetCard()
+		local c = self.selected and self.cards[self.selected]
+		return c and c.data or nil
+	end
+
+	function el:SetValue(v, silent)
+		if v == nil then
+			self:_ClearSelection()
+			return
+		end
+		for i, c in ipairs(self.cards) do
+			if self:_ValueOf(c) == v or c.data.Title == v then
+				self:_Apply(i, silent)
+				return
+			end
+		end
+	end
+
+	function el:SetTitle(t)
+		self.title = t ~= nil and tostring(t) or nil
+		self.label.Text = self.title or ""
+		self:_Recalc()
+		win:_Layout()
+	end
+
+	function el:SetCards(list, keep)
+		local prev = keep and self:Get() or nil
+		self.cardData = list or {}
+		self.selected, self.hovered = nil, nil
+		self:_Build()
+		if prev ~= nil then
+			for i, c in ipairs(self.cards) do
+				if self:_ValueOf(c) == prev then self.selected = i break end
+			end
+			self:_PaintAll()
+		end
+		win:_Layout()
+	end
+
+	-- key = card index (number) or the card's Value / Title
+	function el:UpdateCard(key, patch)
+		patch = patch or {}
+		local c
+		if type(key) == "number" and self.cards[key] then
+			c = self.cards[key]
+		else
+			for _, cc in ipairs(self.cards) do
+				if self:_ValueOf(cc) == key or cc.data.Title == key then c = cc break end
+			end
+		end
+		if not c then return false end
+		for _, field in ipairs({ "Title", "Subtitle", "Value", "ImageSize", "Callback" }) do
+			if patch[field] ~= nil then c.data[field] = patch[field] end
+		end
+		self:_SetTexts(c)
+		if patch.Image ~= nil then
+			c.data.Image = patch.Image
+			self:_LoadImage(c)
+		end
+		return true
+	end
+
+	function el:Destroy()
+		if self.group and win.cardGroups and win.cardGroups[self.group] then
+			local list = win.cardGroups[self.group]
+			for k, e in ipairs(list) do
+				if e == self then table.remove(list, k) break end
+			end
+		end
+		win.tickers[self] = nil
+		for _, c in ipairs(self.cards) do c.dead = true end
+		Element.Destroy(self)
+	end
+
+	-- hover highlight (only while the element is on screen and not covered by a popup)
+	win.tickers[el] = function()
+		local want = nil
+		if el._inView and not el.locked and not win.popupOwner and not win.dragging then
+			local m = UIS:GetMouseLocation()
+			want = el:_CardAt(m.X, m.Y)
+		end
+		if want ~= el.hovered then
+			el.hovered = want
+			el:_PaintAll()
+		end
+	end
+
+	function el:_Save()
+		local v = self:Get()
+		if type(v) == "string" or type(v) == "number" then return v end
+		return false
+	end
+
+	function el:_Load(v)
+		if v == false or v == nil then
+			self:_ClearSelection()
+		else
+			self:SetValue(v, true) -- silent: loading a config should not open pages
+		end
+	end
+
+	el:_Build()
+	if o.Default ~= nil then
+		for i, c in ipairs(el.cards) do
+			if el:_ValueOf(c) == o.Default or c.data.Title == o.Default then
+				el.selected = i
+				break
+			end
+		end
+		el:_PaintAll()
+	end
 	register(el, o)
 	return self:_Add(el)
 end
