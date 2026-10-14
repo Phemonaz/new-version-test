@@ -12,7 +12,7 @@ Library.__index = Library
 -- Every theme is a two-colour gradient design:
 --   bg -> bg2          window body (top to bottom)
 --   header -> header2  sidebar (top to bottom)
---   accent -> accent2  the signature gradient (top line, toggles, sliders, buttons, headers)
+--   accent -> accent2  the signature gradient (top line, toggles, sliders, buttons, headers) 
 --   panel / field      groupbox body / inputs, buttons and dropdown boxes
 ----------------------------------------------------------------------
 
