@@ -1077,6 +1077,12 @@ function Library:CreateWindow(opts)
 	self.closeTxt = mkBtn("close", "x").txt
 	self.minTxt = mkBtn("min", self.minimized and "+" or "-").txt
 
+	-- back button for sub pages (only shown while a page opened with Tab:AddPage is active)
+	self.pageObjs = {}
+	local backBox = self:_D("Circle", { Visible = false, Filled = true, Color = T.field, Radius = 9, NumSides = 24, Thickness = 1, Position = V0, ZIndex = 4 }, self.pageObjs)
+	local backTxt = self:_D("Text", { Visible = false, Text = "<", Color = T.textDim, Size = 13, Font = FONT, Center = true, Position = V0, ZIndex = 6 }, self.pageObjs)
+	self.btn.back = { box = backBox, txt = backTxt }
+
 	-- menu key chip lives at the bottom of the sidebar
 	self.keyLbl = S("Text", { Visible = true, Text = "MENU KEY", Color = T.textDim, Size = 10, Font = FONT, Position = V0, ZIndex = 4 })
 	self.keyBox = S("Square", { Visible = true, Filled = true, Color = T.field, Size = Vector2.new(SIDEBAR_W - 24, 22), Position = V0, ZIndex = 4 })
@@ -1436,6 +1442,7 @@ end
 function Window:_PaintButtons()
 	self:_PaintButton("close")
 	self:_PaintButton("min")
+	self:_PaintButton("back")
 	self:_RenderMenuKey()
 end
 
@@ -1455,8 +1462,29 @@ function Window:_UpdateCrumb()
 	local t = self.activeTab
 	local s = (t and not t.implicit) and t.name or ""
 	local avail = self.w - SIDEBAR_W - 18 - 70
+	if t and t.hidden and t.parent then
+		s = tostring(t.parent.name) .. "  /  " .. tostring(t.title or t.name)
+		avail = avail - 24
+	end
 	self.crumbTxt.Text = fitText(s, 14, avail)
 	return s ~= ""
+end
+
+-- tabs that appear in the sidebar (pages made with Tab:AddPage are hidden)
+function Window:_NavTabs()
+	local out = {}
+	for _, t in ipairs(self.tabs) do
+		if not t.hidden then table.insert(out, t) end
+	end
+	return out
+end
+
+-- leaves a sub page and returns to the tab it belongs to
+function Window:BackFromPage()
+	local t = self.activeTab
+	if t and t.hidden and t.parent then
+		self:SelectTab(t.parent)
+	end
 end
 
 function Window:_TabAt(mx, my)
@@ -1464,17 +1492,18 @@ function Window:_TabAt(mx, my)
 	if mx < self.x or mx > self.x + SIDEBAR_W then return nil end
 	local rel = my - top
 	if rel < 0 then return nil end
+	local nav = self:_NavTabs()
 	local i = math.floor(rel / TAB_STEP) + 1
-	if i < 1 or i > #self.tabs then return nil end
+	if i < 1 or i > #nav then return nil end
 	if rel - (i - 1) * TAB_STEP > TAB_H then return nil end
-	return self.tabs[i]
+	return nav[i]
 end
 
 function Window:_UpdateHover()
 	local rc = self.rc
 	if not rc.close then return end
 	local m = UIS:GetMouseLocation()
-	for _, name in ipairs({ "close", "min", "key" }) do
+	for _, name in ipairs({ "close", "min", "back", "key" }) do
 		local r = rc[name]
 		local on = (self.visible and r ~= nil and inRect(m.X, m.Y, r[1], r[2], r[3], r[4])) or false
 		if on ~= (self.hover[name] or false) then
@@ -1499,8 +1528,9 @@ end
 -- tabs ---------------------------------------------------------------
 
 function Window:_BarVisible()
-	local n = #self.tabs
-	return n > 1 or (n == 1 and not self.tabs[1].implicit)
+	local nav = self:_NavTabs()
+	local n = #nav
+	return n > 1 or (n == 1 and not nav[1].implicit)
 end
 
 function Window:_RefitTabs()
@@ -1509,8 +1539,8 @@ function Window:_RefitTabs()
 	end
 end
 
-function Window:AddTab(name)
-	local tab = setmetatable({ window = self, name = tostring(name), groupboxes = {}, scroll = 0 }, Tab)
+function Window:AddTab(name, _hidden, _parent)
+	local tab = setmetatable({ window = self, name = tostring(name), title = tostring(name), groupboxes = {}, scroll = 0, hidden = _hidden == true, parent = _parent }, Tab)
 	local T = self.Theme
 	-- active highlight: horizontal gradient that fades out to the right
 	tab.hl = {}
@@ -1523,7 +1553,7 @@ function Window:AddTab(name)
 	tab.dot = self:_D("Circle", { Visible = false, Filled = true, Color = T.textDim, Radius = 3, NumSides = 16, Thickness = 1, Position = V0, ZIndex = 7 })
 	tab.txt = self:_D("Text", { Visible = false, Text = tab.name, Color = T.textDim, Size = 12, Font = FONT, Position = V0, ZIndex = 7 })
 	table.insert(self.tabs, tab)
-	if not self.activeTab then
+	if not self.activeTab and not tab.hidden then
 		self.activeTab = tab
 	end
 	self:_RefitTabs()
@@ -1571,7 +1601,8 @@ function Window:_UpdateTabColors()
 	local T = self.Theme
 	local base = T.header:Lerp(T.header2, 0.35)
 	for _, tab in ipairs(self.tabs) do
-		local active = tab == self.activeTab
+		local at = self.activeTab
+		local active = tab == at or (at ~= nil and at.parent == tab)
 		local hov = tab == self.hoverTab
 		if active then
 			tab.txt.Color = T.text
@@ -1591,20 +1622,24 @@ function Window:_UpdateTabColors()
 	end
 end
 
--- vertical tab list inside the sidebar
+-- vertical tab list inside the sidebar (hidden pages take no space)
 function Window:_LayoutTabs(show)
 	local x = self.x
 	local top = self.y + HEADER_H + 10
 	local HW = SIDEBAR_W - 16
-	for i, tab in ipairs(self.tabs) do
-		local active = tab == self.activeTab
-		local iy = top + (i - 1) * TAB_STEP
-		tab.txt.Visible = show
-		tab.dot.Visible = show
-		tab.bar.Visible = show and active
-		tab.bar2.Visible = show and active
-		for _, s in ipairs(tab.hl) do s.Visible = show and active end
-		if show then
+	local ni = 0
+	local at = self.activeTab
+	for _, tab in ipairs(self.tabs) do
+		local vis = show and not tab.hidden
+		local active = tab == at or (at ~= nil and at.parent == tab)
+		if not tab.hidden then ni = ni + 1 end
+		local iy = top + (ni - 1) * TAB_STEP
+		tab.txt.Visible = vis
+		tab.dot.Visible = vis
+		tab.bar.Visible = vis and active
+		tab.bar2.Visible = vis and active
+		for _, s in ipairs(tab.hl) do s.Visible = vis and active end
+		if vis then
 			tab.txt.Position = Vector2.new(x + 32, iy + 8)
 			tab.dot.Position = Vector2.new(x + 21, iy + TAB_H / 2)
 			tab.bar.Position = Vector2.new(x + 8, iy)
@@ -1698,8 +1733,10 @@ function Window:_Layout()
 	self.subTxt.Position = Vector2.new(x + 48, y + 25)
 
 	-- top bar: heading + round buttons
+	local at = self.activeTab
+	local onPage = at ~= nil and at.hidden == true and at.parent ~= nil
 	local hasCrumb = self:_UpdateCrumb()
-	self.crumbTxt.Position = Vector2.new(x + SIDEBAR_W + 18, y + 16)
+	self.crumbTxt.Position = Vector2.new(x + SIDEBAR_W + (onPage and 42 or 18), y + 16)
 
 	local rc = self.rc
 	local bcy = y + 24
@@ -1707,6 +1744,9 @@ function Window:_Layout()
 	rc.close = { ccx - 10, bcy - 10, 20, 20 }
 	rc.min = { mcx - 10, bcy - 10, 20, 20 }
 	rc.key = (not self.minimized) and { x + 12, y + curH - 34, SIDEBAR_W - 24, 22 } or nil
+	rc.back = (onPage and not self.minimized) and { x + SIDEBAR_W + 12, bcy - 10, 20, 20 } or nil
+	self.btn.back.box.Position = Vector2.new(x + SIDEBAR_W + 22, bcy)
+	self.btn.back.txt.Position = Vector2.new(x + SIDEBAR_W + 22, bcy - 7)
 	self.btn.close.box.Position = Vector2.new(ccx, bcy)
 	self.btn.close.txt.Position = Vector2.new(ccx, bcy - 7)
 	self.btn.min.box.Position = Vector2.new(mcx, bcy)
@@ -1723,6 +1763,9 @@ function Window:_Layout()
 	end
 	for _, o in ipairs(self.side) do
 		o.Visible = self.visible and not self.minimized
+	end
+	for _, o in ipairs(self.pageObjs) do
+		o.Visible = self.visible and onPage and not self.minimized
 	end
 	self.subTxt.Visible = self.visible and hasSub
 	self.crumbTxt.Visible = self.visible and hasCrumb
@@ -2048,6 +2091,12 @@ function Window:_OnPress(mx, my)
 		self:SetMinimized(not self.minimized)
 		return
 	end
+	if hit(rc.back) then
+		self:_ClosePopup()
+		self:_BlurText()
+		self:BackFromPage()
+		return
+	end
 	if hit(rc.key) then
 		self:_ClosePopup()
 		self:_BlurText()
@@ -2262,6 +2311,31 @@ end
 
 function Tab:Select()
 	self.window:SelectTab(self)
+end
+
+-- A page is a tab that is not listed in the sidebar. It belongs to this tab: while it is open the
+-- parent stays highlighted, the top bar shows "Parent  /  Page" and a back button appears.
+--   local page = Skins:AddPage("Skins")     -- create once
+--   page:SetTitle("glock-18")               -- change the name shown in the top bar
+--   page:Open()   /   page:Back()           -- also: Window:BackFromPage()
+-- A page has the same Add* methods as a tab (AddGroupbox, AddCardSelect, ...).
+function Tab:AddPage(name)
+	return self.window:AddTab(name, true, self)
+end
+
+function Tab:Open()
+	local win = self.window
+	if win.activeTab ~= self then self.scroll = 0 end
+	win:SelectTab(self)
+end
+
+function Tab:Back()
+	if self.parent then self.window:SelectTab(self.parent) end
+end
+
+function Tab:SetTitle(t)
+	self.title = tostring(t)
+	self.window:_Layout()
 end
 
 function Tab:AddGroupbox(title, side)
@@ -4158,12 +4232,23 @@ function Groupbox:AddCardSelect(o)
 
 	function el:_Clear()
 		for _, c in ipairs(self.cards) do c.dead = true end
+		local gone, any = {}, false
 		for i = #self.objs, 1, -1 do
 			local obj = self.objs[i]
 			if obj ~= self.label then
 				pcall(function() obj:Remove() end)
 				table.remove(self.objs, i)
+				gone[obj] = true
+				any = true
 			end
+		end
+		-- forget the removed drawings so repeated SetCards calls don't pile up in the window's list
+		if any then
+			local keep = {}
+			for _, o2 in ipairs(win.all) do
+				if not gone[o2] then keep[#keep + 1] = o2 end
+			end
+			win.all = keep
 		end
 		self.cards = {}
 	end
